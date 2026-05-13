@@ -19,12 +19,13 @@ All file names below resolve under `${CLAUDE_SKILL_DIR}/../../references/`. Use 
 
 | User asks | File | §Section |
 |-----------|------|----------|
-| "Install YanaGrid" / first-time setup | `yanagrid-install.md` | §Prerequisites → §Step 7 |
+| "Install YanaGrid" / first-time setup | `yanagrid-install.md` | §Prerequisites → §Step 8 |
 | "Migrate from legacy Grid solution" | `yanagrid-install.md` | §Step 1 — Migration |
-| "Bind to sub-grid or home grid" | `yanagrid-install.md` | §Step 3 |
-| "Set manifest properties on the form" | `yanagrid-install.md` | §Step 5 |
-| "Enable Quick View toolbar" | `yanagrid-install.md` §Step 6 + `yanagrid-api.md` §Quick View toolbar | Two reads |
-| "Verify the install" / smoke test | `yanagrid-install.md` | §Step 7 |
+| "Bind to sub-grid or home grid" | `yanagrid-install.md` | §Step 4 |
+| "Set manifest properties on the form" | `yanagrid-install.md` | §Step 6 |
+| "Enable Quick View toolbar" | `yanagrid-install.md` §Step 7 + `yanagrid-api.md` §Quick View toolbar | Two reads |
+| "Verify the install" / smoke test | `yanagrid-install.md` | §Step 8 |
 | "Embed YanaQuickView standalone" | `yanaquickview-install.md` | §Step 2 — Embedding context |
 | "Seed xts_pluginconfiguration" | `yanaquickview-install.md` | §Step 3 |
 | "How do I install the plugin / what does it ship?" | `plugin-install.md` | whole doc |
+| "Install Technosoft.Yana.Grid.js WebResource" | `yanagrid-install.md` | §Step 3 — Install Technosoft.Yana.Grid.js WebResource |

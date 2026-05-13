@@ -8,6 +8,12 @@ This document is the **public API surface**. It describes the manifest propertie
 
 ---
 
+## JS SDK library
+
+In addition to the manifest properties documented here, `Technosoft.Yana.Grid.js` is a JavaScript WebResource that provides programmatic event subscription and cell manipulation from form-level scripts. It exposes `window.top.YanaEditableGrid` and allows external developers to subscribe to grid lifecycle events (`addOnLoad`, `addOnChange`, `addOnSave`, and more), read and set cell values, apply conditional read-only rules, and add cell notifications — all without modifying the control's manifest configuration. See `yanagrid-events.md` for the full JS SDK reference.
+
+---
+
 ## At a glance
 
 | Property | Type | Required | Default | Summary |

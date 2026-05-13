@@ -45,7 +45,37 @@ Control IDs and manifest properties are unchanged between the per-control soluti
 
 ---
 
-## Step 3 — Bind YanaGrid to a sub-grid or home grid
+## Step 3 — Install `Technosoft.Yana.Grid.js` WebResource (optional — JS event API)
+
+Skip this step if you do not intend to subscribe to YanaGrid lifecycle events from a form script. If you plan to call `window.top.YanaEditableGrid.getEditableGrid` from a form-level web resource, complete this step first.
+
+### Path A — Umbrella solution ≥ `v_sdk_bundled`
+
+Starting with version `v_sdk_bundled`, the `Technosoft.Yana.Grid.js` WebResource ships inside `TechnosoftDmsCoreComponents`. No upload is required.
+
+1. In the form designer for the form that hosts YanaGrid, open the **Events** tab.
+2. Under **Form Libraries**, add `Technosoft.Yana.Grid.js` (listed under the `TechnosoftDmsCoreComponents` solution's WebResources).
+3. Set its load order to run **before** your consumer form script.
+4. Save and publish the form.
+
+### Path B — Older umbrella version, or manual install
+
+If your environment's `TechnosoftDmsCoreComponents` version predates `v_sdk_bundled`:
+
+1. Obtain `Technosoft.Yana.Grid.js` from the `references/sdk/` folder inside the `yana-pcf-sdk` Claude Code plugin (see `plugin-install.md`).
+2. In **make.powerapps.com** → your solution → **+ New** → **Web resource**:
+   - **Name**: a name under your publisher prefix (e.g., `app_TechnosoftYanaGrid`).
+   - **Display name**: `Technosoft Yana Grid SDK`.
+   - **Type**: **Script (JScript)**.
+   - Upload the JS file.
+3. Save and publish the WebResource.
+4. In the form designer, add it as a form library in the **Events** tab, loaded before your consumer form script.
+
+For the full event API and a worked example, see `yanagrid-events.md §Install`.
+
+---
+
+## Step 4 — Bind YanaGrid to a sub-grid or home grid
 
 The most common use of YanaGrid is replacing the default editable grid on a parent record's sub-grid.
 
@@ -57,7 +87,7 @@ The most common use of YanaGrid is replacing the default editable grid on a pare
 4. Find **YanaGrid** (publisher `TECHNOSOFT_DMS_CORE`) and add it.
 5. With the sub-grid selected, switch to the **Properties** tab and choose **YanaGrid** under **Controls**.
 6. Enable the control for **Web**, **Phone**, and **Tablet** as required.
-7. Set the manifest properties (see Step 5).
+7. Set the manifest properties (see Step 6).
 8. **Save** and **Publish** the form.
 
 ### B — Home grid (view-level)
@@ -66,12 +96,12 @@ The most common use of YanaGrid is replacing the default editable grid on a pare
 2. Select **Public Views** → choose the view → open the view designer.
 3. Open **Components** → **Custom controls** → add **YanaGrid**.
 4. Enable for **Web**, **Phone**, **Tablet** as required.
-5. Set the manifest properties (see Step 5).
+5. Set the manifest properties (see Step 6).
 6. **Save** and **Publish**.
 
 ---
 
-## Step 4 — Configure the bound dataset
+## Step 5 — Configure the bound dataset
 
 YanaGrid binds to a dataset, so no manual column mapping is required. The columns that appear in the grid come from the selected view.
 
@@ -81,7 +111,7 @@ YanaGrid binds to a dataset, so no manual column mapping is required. The column
 
 ---
 
-## Step 5 — Set manifest properties
+## Step 6 — Set manifest properties
 
 Set each property in the **Properties** panel on the form designer. All properties are optional except the bound dataset.
 
@@ -99,7 +129,7 @@ For full syntax and behavior of each property, see `yanagrid-api.md` → **Prope
 
 ---
 
-## Step 6 — Seed Quick View configuration (optional)
+## Step 7 — Seed Quick View configuration (optional)
 
 The Grid toolbar's **Quick View** button activates automatically when an `xts_pluginconfiguration` record exists for the bound entity. Skip this step if you do not want a Quick View dialog.
 
@@ -137,7 +167,7 @@ After saving the configuration record, refresh the host form. The Quick View ico
 
 ---
 
-## Step 7 — Verify the install
+## Step 8 — Verify the install
 
 | # | Verification |
 |---|--------------|

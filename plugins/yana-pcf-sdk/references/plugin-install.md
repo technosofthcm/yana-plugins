@@ -5,7 +5,7 @@
 - **Reference documentation** for the public API surface of every Yana PCF control.
 - **Skills** that load the right reference into context automatically when you ask a question about installation, binding, configuration, or behavior.
 
-The plugin does not ship slash commands — every entry point is a skill, triggered by phrasing your question naturally.
+Three entry points are available: auto-loading skills (triggered by phrasing your question naturally) and the `/yana-grid-event-handler` scaffold command.
 
 This plugin is for developers integrating Yana controls into their own customer solutions. End users and implementers configuring forms should use the claude.ai Project instead.
 
@@ -49,15 +49,22 @@ To uninstall:
 
 ## Skills
 
-The plugin ships two auto-loading skills. Skill triggers are defined in each skill's `SKILL.md` and may evolve between versions.
+The plugin ships four auto-loading skills. Skill triggers are defined in each skill's `SKILL.md` and may evolve between versions.
 
 | Skill | Auto-loads when you ask about | Reads from `references/` |
 |-------|--------------------------------|--------------------------|
 | `yana-pcf-integration` | Install, sub-grid binding, form deployment, migrating from legacy solutions, seeding `xts_pluginconfiguration` | `yanagrid-install.md`, `yanaquickview-install.md`, this file |
 | `yana-pcf-api-reference` | Manifest properties by name, behavior contracts, configuration XML shape, error messages, supported types, limits | `yanagrid-api.md`, `yanaquickview-api.md` |
 | `yana-pcf-features` | Capabilities, features, end-user how-to, implementer design guidance, release notes / what's new, migration notes | `yanagrid-manual.md`, `yanaquickview-manual.md`, `yanagrid-releases.md`, `yanaquickview-releases.md` |
+| `yana-pcf-events` | Subscribing to YanaGrid lifecycle events, form-script JS SDK, `getEditableGrid`, `addOnChange`, `addOnSave`, cell manipulation from form scripts | `yanagrid-events.md` |
 
 Skills load automatically based on your question — you do not invoke them by name. Each skill reads only the §section it needs from the matching reference doc, so the conversation stays focused.
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/yana-grid-event-handler` | Scaffold a JavaScript web-resource form script that subscribes to YanaGrid events. Prompts for grid control name, event selection, and column names, then emits a ready-to-upload JS file. |
 
 **Canonical reference:** [github.com/technosofthcm/yana-plugins](https://github.com/technosofthcm/yana-plugins) — see the `yana-pcf-sdk` plugin folder for `plugin.json`, README, and `skills/`.
 

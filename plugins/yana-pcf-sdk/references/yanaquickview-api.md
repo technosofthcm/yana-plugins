@@ -202,6 +202,12 @@ Each control instance has its own service instance (`QuickViewService` per `cont
 
 ---
 
+## Event surface
+
+YanaQuickView is read-only and config-driven; it exposes no JavaScript event API. Integration with the host form is via the `selectedQuery` output binding only. For event-driven integration with an editable grid, see `yanagrid-events.md`.
+
+---
+
 ## Versioning
 
 | Version | Status | Namespace |

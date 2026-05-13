@@ -12,6 +12,7 @@ Answer questions about runtime behavior and the public configuration surface of 
 
 For install / deployment → `yana-pcf-integration`.
 For functional how-to / features / what's new → `yana-pcf-features`.
+For JavaScript event subscription, `getEditableGrid`, `addOnChange`, `addOnSave`, cell manipulation → `yana-pcf-events`.
 
 ## Decision tree
 
@@ -29,3 +30,4 @@ All file names below resolve under `${CLAUDE_SKILL_DIR}/../../references/`. Use 
 | Supported types / compatibility | `<control>-api.md` | §Compatibility |
 | Limits / known limitations | `<control>-api.md` | §Limitations |
 | Behavior changes by release | `<control>-api.md` | §Versioning |
+| Event subscription / JS API question | (delegate to `yana-pcf-events`) | — |

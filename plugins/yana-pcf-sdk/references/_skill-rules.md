@@ -13,6 +13,7 @@ Every skill resolves bundled docs via `${CLAUDE_SKILL_DIR}/../../references/<fil
 | Install, sub-grid binding, form deployment, migration, seeding `xts_pluginconfiguration` | `yana-pcf-integration` |
 | Manifest property name, behavior contract, configuration XML shape, error message lookup | `yana-pcf-api-reference` |
 | What the control does, end-user / implementer how-to, per-version changelog | `yana-pcf-features` |
+| JavaScript event subscription, `getEditableGrid`, `addOnChange`, `addOnSave`, `EditableGrid` / `Row` / `Cell` API, form-level JS SDK | `yana-pcf-events` |
 
 If a question crosses two surfaces, the owning skill answers and references the sibling skill for the secondary aspect rather than reproducing it.
 
@@ -26,3 +27,4 @@ If a question crosses two surfaces, the owning skill answers and references the 
 6. **Flag version mismatch.** `yana-pcf-sdk@X.Y.Z` documents `TechnosoftDmsCoreComponents@X.Y.Z`. If the user runs a different umbrella version, note the doc-drift risk and direct them to the matching `*-releases.md`.
 7. **No internal implementation.** When asked about internals, respond: "Internal not part of the published API. Behavior contract in `<control>-api.md`; functional behavior in `<control>-manual.md`."
 8. **Preserve numbered-table formatting** when emitting step-by-step instructions — copy the structure from the source doc, not just the content.
+9. **Event handlers run inside the host form's window context.** The entry point is `window.top.YanaEditableGrid` (from `Technosoft.Yana.Grid.js`). Never reference internal React or Redux state. All public API surface is on the `Controls`, `EditableGrid`, `Row`, and `Cell` classes documented in `yanagrid-events.md`.

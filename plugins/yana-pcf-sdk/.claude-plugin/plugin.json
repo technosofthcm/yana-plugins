@@ -21,6 +21,12 @@
     "dynamics",
     "dms",
     "dealer-management",
-    "technosoft"
+    "technosoft",
+    "events",
+    "addOnChange",
+    "addOnSave",
+    "form-script",
+    "web-resource",
+    "sdk"
   ]
 }
