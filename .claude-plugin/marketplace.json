@@ -1,0 +1,20 @@
+{
+  "name": "technosofthcm",
+  "owner": {
+    "name": "Technosoft HCM"
+  },
+  "description": "Technosoft DMS plugin marketplace for Yana — PCF controls, integration SDKs, and tooling for partners and customers building on the Yana Dealer Management System.",
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "yana-pcf-sdk",
+      "source": "./plugins/yana-pcf-sdk",
+      "description": "External developer SDK for Yana PCF controls (YanaGrid, YanaQuickView). Reference docs + scaffold commands for Power Platform integration.",
+      "category": "integration",
+      "tags": ["pcf", "powerplatform", "dataverse", "dms", "yana", "sdk"],
+      "keywords": ["yanagrid", "yanaquickview", "pcf-control", "power-platform", "dealer-management", "dynamics"],
+      "homepage": "https://github.com/technosofthcm/yana-plugins",
+      "license": "Apache-2.0"
+    }
+  ]
+}

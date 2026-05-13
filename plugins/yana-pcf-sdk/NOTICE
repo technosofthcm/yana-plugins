@@ -1,0 +1,14 @@
+yana-pcf-sdk
+Copyright 2026 Technosoft HCM
+
+This product includes documentation and tooling developed by Technosoft HCM
+for the Yana PCF controls (YanaGrid, YanaQuickView).
+
+The Yana PCF control binaries themselves are distributed separately as part of
+the `TechnosoftDmsCoreComponents` Dataverse solution under separate commercial
+terms. This Apache-2.0 license applies only to the contents of this plugin
+repository (documentation, scaffold commands, skills, and templates) — it does
+not grant rights to use, modify, or redistribute the underlying PCF control
+binaries.
+
+Contact: https://github.com/technosofthcm/yana-plugins
