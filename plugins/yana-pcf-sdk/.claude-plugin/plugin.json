@@ -1,6 +1,6 @@
 {
   "name": "yana-pcf-sdk",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "External developer SDK for Yana PCF controls (YanaGrid, YanaQuickView). Reference docs + scaffold commands for Power Platform integration. Version is stamped from the umbrella TechnosoftDmsCoreComponents solution at bundle time.",
   "author": {
     "name": "Technosoft HCM",
