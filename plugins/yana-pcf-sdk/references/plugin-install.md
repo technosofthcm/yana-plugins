@@ -49,16 +49,21 @@ To uninstall:
 
 ## Skills
 
-The plugin ships four auto-loading skills. Skill triggers are defined in each skill's `SKILL.md` and may evolve between versions.
+The plugin ships seven auto-loading skills. Skill triggers are defined in each skill's `SKILL.md` and may evolve between versions.
 
 | Skill | Auto-loads when you ask about | Reads from `references/` |
-|-------|--------------------------------|--------------------------|
-| `yana-pcf-integration` | Install, sub-grid binding, form deployment, migrating from legacy solutions, seeding `xts_pluginconfiguration` | `yanagrid-install.md`, `yanaquickview-install.md`, this file |
-| `yana-pcf-api-reference` | Manifest properties by name, behavior contracts, configuration XML shape, error messages, supported types, limits | `yanagrid-api.md`, `yanaquickview-api.md` |
-| `yana-pcf-features` | Capabilities, features, end-user how-to, implementer design guidance, release notes / what's new, migration notes | `yanagrid-manual.md`, `yanaquickview-manual.md`, `yanagrid-releases.md`, `yanaquickview-releases.md` |
-| `yana-pcf-events` | Subscribing to YanaGrid lifecycle events, form-script JS SDK, `getEditableGrid`, `addOnChange`, `addOnSave`, cell manipulation from form scripts | `yanagrid-events.md` |
+|-------|-------------------------------|--------------------------|
+| `yanagrid-events` | YanaGrid JavaScript event subscription, `getEditableGrid`, `addOnLoad`, `addOnChange`, `addOnSave`, `EditableGrid` / `Row` / `Cell` API, JS SDK install | `yanagrid-events.md` |
+| `yanagrid-api` | YanaGrid manifest properties, behavior contracts, configuration XML shape, error messages, compatibility, limitations | `yanagrid-api.md` |
+| `yanagrid-install` | YanaGrid install, sub-grid / home grid binding, form deployment, WebResource upload, legacy migration | `yanagrid-install.md`, this file |
+| `yanagrid-manual` | YanaGrid features, end-user / implementer how-to, release notes, changelog | `yanagrid-manual.md`, `yanagrid-releases.md` |
+| `yanaquickview-api` | YanaQuickView manifest properties, configuration XML shape, error messages, compatibility, limitations | `yanaquickview-api.md` |
+| `yanaquickview-install` | YanaQuickView install, embedding, form binding, seeding `xts_pluginconfiguration` | `yanaquickview-install.md`, this file |
+| `yanaquickview-manual` | YanaQuickView features, end-user how-to, release notes, changelog | `yanaquickview-manual.md`, `yanaquickview-releases.md` |
 
 Skills load automatically based on your question — you do not invoke them by name. Each skill reads only the §section it needs from the matching reference doc, so the conversation stays focused.
+
+> **Note:** YanaQuickView has no JavaScript event API — there is no `yanaquickview-events` skill.
 
 ## Commands
 

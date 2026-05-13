@@ -17,19 +17,24 @@ Then ask any integration question — the right skill auto-loads from your phras
 
 | Path | Contents |
 |------|----------|
-| `skills/yana-pcf-integration/` | Auto-loads on install / deploy / binding / migration questions |
-| `skills/yana-pcf-api-reference/` | Auto-loads on manifest / behavior / property / error questions |
-| `skills/yana-pcf-features/` | Auto-loads on function / feature / capability / version-history questions |
-| `skills/yana-pcf-events/` | Auto-loads on JavaScript event subscription, `getEditableGrid`, `addOnChange`, `addOnSave`, cell manipulation questions |
+| `skills/yanagrid-events/` | Auto-loads on YanaGrid JavaScript event questions: `addOnLoad`, `addOnChange`, `addOnSave`, `getEditableGrid`, `EditableGrid` / `Row` / `Cell` API, JS SDK install |
+| `skills/yanagrid-api/` | Auto-loads on YanaGrid manifest property, behavior contract, config XML, error code, or compatibility questions |
+| `skills/yanagrid-install/` | Auto-loads on YanaGrid install, sub-grid binding, form deployment, WebResource upload, or legacy migration questions |
+| `skills/yanagrid-manual/` | Auto-loads on YanaGrid features, end-user / implementer how-to, and version changelog questions |
+| `skills/yanaquickview-api/` | Auto-loads on YanaQuickView manifest property, config XML, error code, or compatibility questions (config-only — no events) |
+| `skills/yanaquickview-install/` | Auto-loads on YanaQuickView install, embedding, form binding, or xts_pluginconfiguration seed questions |
+| `skills/yanaquickview-manual/` | Auto-loads on YanaQuickView features, accordion behavior, end-user how-to, and version changelog questions |
 | `commands/yana-grid-event-handler.md` | Scaffold command — generates a ready-to-upload form-script JS file wired to YanaGrid events |
 | `references/` | API + install + events + manual + releases reference docs (bundled from upstream at release time) |
 | `references/sdk/` | `Technosoft.Yana.Grid.js` — JS SDK WebResource (bundled from upstream at release time; upload this if your umbrella solution predates `v_sdk_bundled`) |
+
+> **Note:** YanaQuickView has no JavaScript event API — there is no `yanaquickview-events` skill.
 
 ## Event-driven workflow
 
 Starting with `TechnosoftDmsCoreComponents` v`v_sdk_bundled`, you can subscribe to grid lifecycle events from a standard Dataverse form script. Load `Technosoft.Yana.Grid.js` as a form library, then call `window.top.YanaEditableGrid.getEditableGrid(executionContext, gridName)` to get a handle. From there you can wire `addOnLoad`, `addOnChange`, `addOnSave`, and other events, and read or set cell values via the `Row` and `Cell` API.
 
-Ask the `yana-pcf-events` skill any question about the JS SDK, or run `/yana-grid-event-handler` to get a scaffolded form script in seconds.
+Ask the `yanagrid-events` skill any question about the JS SDK, or run `/yana-grid-event-handler` to get a scaffolded form script in seconds.
 
 ## Audience
 
