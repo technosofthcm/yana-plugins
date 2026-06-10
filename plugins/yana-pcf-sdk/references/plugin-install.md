@@ -3,9 +3,8 @@
 `yana-pcf-sdk` is a Claude Code plugin that helps external developers integrate Yana PCF controls (YanaGrid, YanaQuickView) into their Power Platform solutions. The plugin bundles:
 
 - **Reference documentation** for the public API surface of every Yana PCF control.
-- **Skills** that load the right reference into context automatically when you ask a question about installation, binding, configuration, or behavior.
-
-Three entry points are available: auto-loading skills (triggered by phrasing your question naturally) and the `/yana-grid-event-handler` scaffold command.
+- **Slash commands** that scaffold integration boilerplate.
+- **Skills** that load the right context automatically when you ask a question about installation, configuration, or behavior.
 
 This plugin is for developers integrating Yana controls into their own customer solutions. End users and implementers configuring forms should use the claude.ai Project instead.
 
@@ -47,31 +46,13 @@ To uninstall:
 
 ---
 
-## Skills
+## Commands & skills
 
-The plugin ships seven auto-loading skills. Skill triggers are defined in each skill's `SKILL.md` and may evolve between versions.
-
-| Skill | Auto-loads when you ask about | Reads from `references/` |
-|-------|-------------------------------|--------------------------|
-| `yanagrid-events` | YanaGrid JavaScript event subscription, `getEditableGrid`, `addOnLoad`, `addOnChange`, `addOnSave`, `EditableGrid` / `Row` / `Cell` API, JS SDK install | `yanagrid-events.md` |
-| `yanagrid-api` | YanaGrid manifest properties, behavior contracts, configuration XML shape, error messages, compatibility, limitations | `yanagrid-api.md` |
-| `yanagrid-install` | YanaGrid install, sub-grid / home grid binding, form deployment, WebResource upload, legacy migration | `yanagrid-install.md`, this file |
-| `yanagrid-manual` | YanaGrid features, end-user / implementer how-to, release notes, changelog | `yanagrid-manual.md`, `yanagrid-releases.md` |
-| `yanaquickview-api` | YanaQuickView manifest properties, configuration XML shape, error messages, compatibility, limitations | `yanaquickview-api.md` |
-| `yanaquickview-install` | YanaQuickView install, embedding, form binding, seeding `xts_pluginconfiguration` | `yanaquickview-install.md`, this file |
-| `yanaquickview-manual` | YanaQuickView features, end-user how-to, release notes, changelog | `yanaquickview-manual.md`, `yanaquickview-releases.md` |
-
-Skills load automatically based on your question — you do not invoke them by name. Each skill reads only the §section it needs from the matching reference doc, so the conversation stays focused.
-
-> **Note:** YanaQuickView has no JavaScript event API — there is no `yanaquickview-events` skill.
-
-## Commands
-
-| Command | Purpose |
-|---------|---------|
-| `/yana-grid-event-handler` | Scaffold a JavaScript web-resource form script that subscribes to YanaGrid events. Prompts for grid control name, event selection, and column names, then emits a ready-to-upload JS file. |
+The plugin ships slash commands (scaffolding integrations) and auto-loading skills (install + API reference). Command names, argument syntax, and skill triggers are defined in the plugin's `plugin.json` and may change between versions.
 
 **Canonical reference:** [github.com/technosofthcm/yana-plugins](https://github.com/technosofthcm/yana-plugins) — see the `yana-pcf-sdk` plugin folder for `plugin.json`, README, and `skills/`.
+
+**After install** run `/help yana-pcf-sdk` in Claude Code for the current command list and per-command help.
 
 ---
 
