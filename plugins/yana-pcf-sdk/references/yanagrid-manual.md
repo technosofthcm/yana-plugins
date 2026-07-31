@@ -27,6 +27,9 @@ Key capabilities:
 | Calculation formulas | Auto-calculate a column from other columns |
 | Parent updates | Roll up totals from the grid into fields on the parent form |
 | Quick View toolbar | Side-panel showing related-entity data (when configured) |
+| Client-side paging | First/Previous/Next/Last navigation over the full loaded record set (up to 5,000 records) |
+| Column reordering | Drag a column header to reposition it; remembered per view |
+| Extensibility (implementers) | Custom cell rendering, configurable Add/Delete/read-only, custom command-bar buttons, and lifecycle events via the bundled JS SDK — see `yanagrid-events.md` |
 
 ---
 
@@ -53,21 +56,47 @@ If a save fails, the row stays in edit mode with the cell highlighted and an err
 
 ## Adding a row
 
-Click the **+ New** button on the grid toolbar (top right). A blank row appears at the bottom of the grid. Fill in the required fields and the row commits on save.
+Click the **Add row** button on the command bar. A blank row appears at the bottom of the grid; the grid scrolls it into view and puts the cursor in its first editable cell so you can start typing immediately. Fill in the required fields and the row commits on save. (If a required field on the current rows is still empty, the grid asks you to complete it before adding another row.)
 
 ## Deleting a row
 
-Select the row's leftmost checkbox, then click **Delete** on the toolbar. You will be asked to confirm.
+Select the row's checkbox, then click **Delete** on the toolbar. You will be asked to confirm.
+
+## Row actions
+
+The **Open Record** and **Quick View** icons for a row are on the far right of the grid (matching the standard Power Apps grid layout), not the left.
+
+## Reordering and searching columns
+
+Drag a column header to move it — your chosen order is remembered the next time you open the form. The right-most Actions column always stays in place.
+
+To find rows quickly, use the keyword search box on the command-bar line — type a term and the grid filters to matching rows as you type.
+
+An option-set (choice) column whose values have colours configured shows those colours as a badge or dot next to the value, the same way colour-coded choices look elsewhere in the app.
 
 ## Grouping rows
 
-If grouping is enabled, the column header has a **⋮** menu. Choose **Group by this column** to collapse the grid into sections by that column's values. Your chosen grouping is remembered the next time you open the form.
+The column header has a **⋮** menu. Choose **Group by this column** to collapse the grid into sections by that column's values. Your chosen grouping is remembered the next time you open the form.
 
-To clear grouping, open the same menu and choose **Clear grouping**.
+When a column is grouped, a **Grouped by** chip appears on the command bar. Use the controls on the chip to:
+
+- **Expand all** — open every group section at once.
+- **Collapse all** — close every group section at once.
+- **Remove** — clear grouping and return to the flat list.
+
+You can also remove grouping from the column header menu by choosing **Remove grouping**.
 
 ## Footer totals
 
 When the screen is configured with footer columns, the totals row sits beneath the grid. The function (sum, average, minimum, maximum, count) is set by the maker per column.
+
+## Paging and grid height
+
+The grid loads its data once and pages through it entirely in your browser — moving between pages does not reload the grid. The pager offers **First, Previous, Next, Last** buttons, the current page, and a record range (e.g. "1 - 25 of 500"). Page size follows the "Maximum number of rows" the maker configured for that view. A view with more than 5,000 matching records only loads the first 5,000.
+
+The grid reserves a fixed height for a **full page** of rows — so a page size of 5 shows a 5-row-tall grid even when the current page has fewer records, and the height stays steady when you add a row. For a large page size, the grid grows only up to about 60% of the window height and the remaining rows scroll inside the grid, so it never takes over the whole form.
+
+Footer totals, calculated columns, and parent roll-ups are always based on **every** record in the grid, not just the page you're viewing.
 
 ## Discarding changes
 
@@ -91,7 +120,7 @@ Quick View grids are display-only — you cannot edit, sort, or filter inside th
 ## Common questions
 
 **Why is a cell locked / greyed out?**
-Either the column is configured as read-only, or the row's status puts the whole row into read-only mode (for example, a closed/completed record). Ask your administrator to unlock it if needed.
+Either the column is configured as read-only, or the row's status puts the whole row into read-only mode (for example, a closed/completed record). Read-only cells show a light-gray box (full height, even when empty) and a normal cursor, so you can tell at a glance which cells you can edit. Ask your administrator to unlock it if needed.
 
 **Why didn't my change save?**
 Look for a red border on a cell or a banner at the top. The grid will not save a row with invalid values. Fix the highlighted cells and save again.
@@ -128,9 +157,10 @@ Start with a minimal configuration and add properties as needed.
 | Footer totals | `footerAggregateColumns = "col1:sum, col2:avg"` | Only numeric columns; default function is `sum` |
 | Lock columns | `readOnlyColumns = "col1, col2"` | Lock display columns that should never be edited from the grid |
 | Lock by status | `readOnlyStatus = "2, 5"` | Statecodes/statuscodes that mark the whole row read-only |
-| Enable grouping | `enableGroupBy = true` (default) | Disable if you don't want users to regroup |
 | Calculate columns | `calculationFormulas = "{tot}={qty}*{price}"` | Targets must be writable; operators: `+ - * /` |
 | Roll up to parent | `parentUpdateFormulas = "{p_tot}={c_tot}:sum"` | Fires on successful row save |
+
+Grouping is always available — no property is required. Users initiate grouping from each column header's menu ("Group by this column"). The **Grouped by** chip on the command bar provides **Expand all**, **Collapse all**, and **Remove** controls.
 
 Full property reference: `yanagrid-api.md` → **Property reference**.
 
@@ -160,7 +190,7 @@ Use `CurrentRecordId` and `CurrentUserId` placeholders in filter conditions to k
 | 2 | Edit existing row, leave row — auto-save (if enabled) commits |
 | 3 | Field validation errors block save and show red border |
 | 4 | Footer aggregate values are correct after add/edit/delete |
-| 5 | Grouping persists across reloads |
+| 5 | Grouping persists across reloads; Expand all / Collapse all work from the Grouped by chip |
 | 6 | `parentUpdateFormulas` writes correct values to parent fields |
 | 7 | Quick View dialog opens, sections load in parallel, retry works |
 | 8 | Read-only columns / read-only-by-status rows are locked |
@@ -181,4 +211,4 @@ For issues, behavior questions, or feature requests, contact the Technosoft DMS 
 
 ---
 
-> **Bundle metadata** — generated 2026-05-13 from `.public-docs/yanagrid-manual.md` for plugin version 2.0.0.
+> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanagrid-manual.md` for plugin version 1.5.0.

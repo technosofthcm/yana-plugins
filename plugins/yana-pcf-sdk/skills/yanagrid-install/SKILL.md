@@ -21,11 +21,11 @@ All paths resolve under `${CLAUDE_SKILL_DIR}/../../references/`. Use `Read` with
 
 | User asks | File | §Section |
 |-----------|------|----------|
-| "Install YanaGrid" / first-time setup | `yanagrid-install.md` | §Prerequisites → §Step 8 |
-| "Migrate from legacy Grid solution" | `yanagrid-install.md` | §Step 1 — Migration |
-| "Bind to sub-grid or home grid" | `yanagrid-install.md` | §Step 4 |
-| "Set manifest properties on the form" | `yanagrid-install.md` | §Step 6 |
-| "Enable Quick View toolbar" | `yanagrid-install.md` + `yanagrid-api.md` | §Step 7 + §Quick View toolbar |
-| "Verify the install" / smoke test | `yanagrid-install.md` | §Step 8 |
-| "Install Technosoft.Yana.Grid.js WebResource" | `yanagrid-install.md` | §Step 3 — Install Technosoft.Yana.Grid.js WebResource |
+| "Install YanaGrid" / first-time setup | `yanagrid-install.md` | §Prerequisites → §Step 7 — Verify the install |
+| "Migrate from an older YanaGrid version" | `yanagrid-releases.md` | §Upgrade guidance |
+| "Bind to sub-grid or home grid" | `yanagrid-install.md` | §Step 3 — Bind YanaGrid to a sub-grid or home grid |
+| "Set manifest properties on the form" | `yanagrid-install.md` | §Step 5 — Set manifest properties |
+| "Enable Quick View toolbar" | `yanagrid-install.md` + `yanagrid-api.md` | §Step 6 — Seed Quick View configuration + §Quick View toolbar |
+| "Verify the install" / smoke test | `yanagrid-install.md` | §Step 7 — Verify the install |
+| "Install Technosoft.Yana.Grid.js WebResource" | `yanagrid-install.md` | §Step 2 — Install Technosoft.Yana.Grid.js WebResource |
 | "How do I install the plugin / what does it ship?" | `plugin-install.md` | whole doc |

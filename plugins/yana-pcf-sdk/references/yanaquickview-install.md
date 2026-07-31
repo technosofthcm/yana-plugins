@@ -2,7 +2,7 @@
 
 This guide walks an implementer through installing the **standalone YanaQuickView v1.0.0** PCF control and embedding it on a Power Apps form, ribbon, or custom page.
 
-YanaQuickView ships inside the umbrella Dataverse solution **`TechnosoftDmsCoreComponents`** alongside YanaGrid.
+YanaQuickView ships inside the umbrella Dataverse solution **CORE Custom Control** alongside YanaGrid.
 
 ---
 
@@ -12,7 +12,7 @@ YanaQuickView ships inside the umbrella Dataverse solution **`TechnosoftDmsCoreC
 |------|----------|
 | Microsoft Power Platform environment (Dataverse online) | yes |
 | System Administrator or System Customizer role | yes |
-| `TechnosoftDmsCoreComponents` managed solution file (`.zip`) | yes — provided by Technosoft |
+| `CORECustomControl` managed solution file (`.zip`) | yes — provided by Technosoft |
 | `xts_pluginconfiguration` table available in the target environment | yes — included in the solution |
 
 > If you have already installed YanaGrid v1.4.0, the umbrella solution is already imported and YanaQuickView is available. Skip to **Step 2**.
@@ -21,7 +21,7 @@ YanaQuickView ships inside the umbrella Dataverse solution **`TechnosoftDmsCoreC
 
 ## Step 1 — Import the umbrella solution
 
-Same as the YanaGrid install — see `yanagrid-install.md` → **Step 1 (Migration)** and **Step 2 (Import)**. Both controls ship in the same solution.
+Same as the YanaGrid install — see `yanagrid-install.md` → **Step 1 (Import)**. Both controls ship in the same solution.
 
 ---
 
@@ -133,4 +133,4 @@ For issues not listed here, see `yanaquickview-manual.md` → **Support** for th
 
 ---
 
-> **Bundle metadata** — generated 2026-05-13 from `.public-docs/yanaquickview-install.md` for plugin version 2.0.0.
+> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanaquickview-install.md` for plugin version 1.5.0.

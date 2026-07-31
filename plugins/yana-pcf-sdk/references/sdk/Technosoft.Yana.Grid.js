@@ -1,622 +1,120 @@
-﻿// ============================================
-// YanaEditableGrid - Editable Grid Control Library
 // ============================================
-
-// Utility: Check if field type is a Lookup
-const isLookupField = (type) => type.includes('Lookup');
-
+// YanaEditableGrid - DEPRECATED delegating shim
 // ============================================
-// Cell Class - Represents a single grid cell
-// ============================================
-class Cell {
-  constructor({
-    schemaName,
-    rowId,
-    gridId,
-    type,
-    value,
-    isRequired,
-    isDisabled,
-    isSystemDisabled,
-    isReadOnly,
-    readOnlyColumns,
-  }) {
-    this.schemaName = schemaName;
-    this.rowId = rowId;
-    this.gridId = gridId;
-    this.type = type;
-    this.value = value;
-    this.isRequired = isRequired;
-    this.isDisabled = isDisabled;
-    this.isSystemDisabled = isSystemDisabled;
-    this.isReadOnly = isReadOnly;
-    this.readOnlyColumns = readOnlyColumns;
-  }
+//
+// Since YanaGrid v1.5.0 the SDK ships inside the control bundle: the control self-publishes
+// `window.top.YanaEditableGrid` on init, so consumers no longer need this web resource as a form
+// library. This file remains only for backward compatibility with forms that still register it —
+// it is a thin shim that waits for the bundled namespace and delegates to it.
+//
+// Same public contract as the legacy library:
+//   - `getEditableGrid(context, gridId)` signature (the first argument is an echo token handed
+//     back to every handler as its first parameter);
+//   - wait-for-ready with the same 60-second timeout semantics (resolves null and logs on
+//     timeout, like the legacy polling client).
+//
+// Version guard: the shim and the bundle load in unguaranteed order; whichever loads
+// second must not clobber the other. The shim never overwrites a bundled namespace; the bundle
+// always replaces the shim.
+//
+// This shim requires YanaGrid control >= 1.5.0 on the form. Removal planned for the next major
+// version.
 
-  // Set cell value with validation
-  setValue(newValue) {
-    const requestId = Date.now().toString();
+(function () {
+  'use strict';
 
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        window.removeEventListener('message', messageHandler);
-        //reject("Request timed out!");
-      }, 6000);
+  var DELEGATE_TIMEOUT_MS = 60000;
+  var POLL_INTERVAL_MS = 500;
 
-      const messageHandler = (event) => {
-        const response = JSON.parse(event.data);
-
-        // Check if this is the response we're waiting for
-        if (response.messageType === 'updateData' && response.requestId === requestId) {
-          window.removeEventListener('message', messageHandler);
-          clearTimeout(timeout);
-
-          if (response.status) {
-            // Success
-            this.value = isLookupField(this.type) ? response.value : newValue;
-            resolve(newValue);
-          } else {
-            // Validation error
-            this.value = response.value;
-            reject(`Validation Error: ${response?.errorMessage}`);
-          }
-        }
-      };
-
-      window.addEventListener('message', messageHandler);
-
-      const valueToSend = isLookupField(this.type) ? newValue : newValue?.toString() || '';
-
-      this.sendRequest('setValue', valueToSend, requestId);
-    });
-  }
-
-  // Get cell value (converts DateAndTime to Date object)
-  getValue() {
-    if (this.value && this.type.includes('DateAndTime')) {
-      return new Date(this.value);
+  // `window.top` resolves even when it is cross-origin (Teams tab, portal/iframe embed), but every
+  // named-property read on it then throws SecurityError. Probe with a real read and stay in this
+  // frame when the read is blocked.
+  var topWindow = window;
+  try {
+    if (window.top && window.top !== window) {
+      void window.top.YanaEditableGrid;
+      topWindow = window.top;
     }
-    return this.value || null;
+  } catch (e) {
+    topWindow = window;
   }
 
-  // Set disabled state
-  setDisabled(disabled) {
-    if (this.isSystemDisabled) return;
-    this.isDisabled = disabled;
-    this.sendRequest('setDisabled', disabled);
+  function isBundled(namespace) {
+    return !!namespace && namespace.__bundled === true;
   }
 
-  // Get disabled state
-  getDisabled() {
-    return this.isDisabled;
-  }
-
-  // Set readonly state
-  setReadOnly(readonly) {
-    if (this.isSystemDisabled) return;
-    this.isReadOnly = readonly;
-    this.sendRequest('setReadOnly', readonly);
-  }
-
-  // Get readonly state
-  getReadOnly() {
-    return this.isReadOnly;
-  }
-
-  // Set required level ("required" or "none")
-  setRequiredLevel(level) {
-    if (this.isSystemDisabled) return;
-    if (level !== 'required' && level !== 'none') return;
-
-    this.isRequired = level == 'required' ? true : false;
-    this.sendRequest('setRequired', this.isRequired);
-  }
-
-  // Get required level
-  getRequiredLevel() {
-    return this.isRequired;
-  }
-
-  // Set readonly columns state
-  setReadOnlyColumns(readOnlyColumns) {
-    this.readOnlyColumns = readOnlyColumns;
-    this.sendRequest('setReadOnlyColumns', readOnlyColumns);
-  }
-
-  // Get readonly columns state
-  getReadOnlyColumns() {
-    return this.readOnlyColumns;
-  }
-
-  // Get field type
-  getType() {
-    return this.type;
-  }
-
-  // Get parent grid ID
-  getEditableGridId() {
-    return this.gridId;
-  }
-
-  // Add presearch filter for lookup fields
-  addPreSearch(filter) {
-    this.sendRequest('addPreSearch', filter);
-  }
-
-  // Remove presearch filter
-  removePreSearch() {
-    this.sendRequest('addPreSearch', '');
-  }
-
-  // Set notification message
-  setNotification(message) {
-    this.sendRequest('setNotification', message);
-  }
-
-  // Clear notification
-  clearNotification() {
-    this.sendRequest('setNotification', '');
-  }
-
-  // Internal: Send message to parent window
-  sendRequest(messageType, value, requestId) {
-    let message = {
-      messageType,
-      frameId: window.frameElement?.id || '',
-      gridId: this.gridId,
-      rowId: this.rowId,
-      columnName: this.schemaName,
-      value: this.value,
-      isDisabled: this.isDisabled,
-      isRequired: this.isRequired,
-      isReadOnly: this.isReadOnly,
-      requestId,
-    };
-
-    // Add specific properties based on message type
-    if (messageType === 'setValue') {
-      message = { ...message, value };
-    } else if (messageType === 'addPreSearch') {
-      message = { ...message, presearch: value };
-    } else if (messageType === 'setDisabled') {
-      message = { ...message, isDisabled: value };
-    } else if (messageType === 'setReadOnly') {
-      message = { ...message, isReadOnly: value };
-    } else if (messageType === 'setRequired') {
-      message = { ...message, isRequired: value };
-    } else if (messageType === 'setReadOnlyColumns') {
-      message = { ...message, readOnlyColumns: value };
-    } else if (messageType === 'setNotification') {
-      message = { ...message, notification: value };
-    }
-
-    window.top?.postMessage(JSON.stringify(message));
-  }
-}
-
-// ============================================
-// Row Class - Represents a grid row
-// ============================================
-class Row {
-  constructor(rowId, cells) {
-    this.rowId = rowId;
-    this.cells = cells;
-  }
-
-  // Get cell by schema name
-  getCell(schemaName) {
-    return this.cells.find((cell) => cell.schemaName === schemaName);
-  }
-}
-
-// ============================================
-// ServiceBus - Event handling singleton
-// ============================================
-class ServiceBus {
-  static _instance = null;
-
-  constructor() {
-    this._eventList = new Map();
-
-    // Listen for messages from parent window
-    window.addEventListener('message', (event) => {
-      this.callHandler(event.data);
-    });
-  }
-
-  // Subscribe to grid event
-  subscribe(instance, gridId, eventName, eventFunction, eventParameter) {
-    const events = this.getEventObject(gridId);
-    events.push({
-      instance,
-      eventName,
-      eventParameter,
-      eventFunction,
-    });
-  }
-
-  // Unsubscribe from grid event
-  unsubscribe(gridId, eventName, eventFunction, eventParameter) {
-    let events = this.getEventObject(gridId);
-
-    events = events.filter((event) => {
-      const nameMatch = event.eventName === eventName;
-      const funcMatch = event.eventFunction === eventFunction;
-      const paramMatch = eventParameter === undefined || eventParameter === event.eventParameter;
-      return !(nameMatch && funcMatch && paramMatch);
-    });
-
-    this._eventList.set(gridId, events);
-  }
-
-  // Handle incoming messages
-  async callHandler(data) {
-    const message = JSON.parse(data);
-    const validEvents = [
-      'addOnLoad',
-      'addOnNew',
-      'addOnNewForm',
-      'addOnQuickView',
-      'addOnChange',
-      'addOnSave',
-    ];
-
-    if (!validEvents.includes(message.eventName)) return;
-
-    const events = this._eventList.get(message.gridId);
-    if (!events || !message) return;
-
-    // Execute matching event handlers
-    for (const event of events) {
-      await this.executeEventHandler(event, message);
-    }
-  }
-
-  // Execute individual event handler
-  async executeEventHandler(event, message) {
-    // Check if event matches message
-    const isMatch =
-      event.eventName === message.eventName &&
-      (event.eventParameter === undefined ||
-        (event.eventName === 'addOnChange' && event.eventParameter === message.columnName));
-
-    if (!isMatch || !message?.data) return;
-
-    try {
-      // Parent Entity
-      const parentEntity = message.data.parentEntity;
-
-      // Build table data
-      const rows =
-        message.data.table?.rows.map((rowData) => {
-          const cells = rowData.cells.map((cellData) => new Cell(cellData));
-          return new Row(rowData.rowId, cells);
-        }) || [];
-
-      const table = new EditableGrid(event.instance, message.gridId, message.parentEntity, rows);
-
-      // Build row data
-      const rowCells = message.data.row?.cells.map((cellData) => new Cell(cellData)) || [];
-      const row = message.data.row ? new Row(message.data.row.rowId, rowCells) : undefined;
-
-      // Find changed cell
-      const cell = rowCells?.find((c) => c.schemaName === message.data?.fieldName);
-
-      // Build event context
-      const eventContext = {
-        gridId: message.gridId,
-        eventName: message.eventName,
-        data: { parentEntity, table, row, cell },
-      };
-
-      // Execute event function
-      await event.eventFunction(event.instance, eventContext);
-    } catch (error) {
-      // Show error dialog
-      parent.Xrm.Navigation.openErrorDialog({
-        message: error?.message,
-        details: error?.stack,
-      });
-    } finally {
-      // Notify save completion
-      if (message.eventName === 'addOnSave') {
-        window.top?.postMessage(
-          JSON.stringify({
-            messageType: 'saveEventCompleted',
-            frameId: window.frameElement?.id,
-            gridId: message.gridId,
-          }),
-        );
-      }
-    }
-  }
-
-  // Singleton pattern
-  static getServiceBus() {
-    if (!ServiceBus._instance) {
-      ServiceBus._instance = new ServiceBus();
-    }
-    return ServiceBus._instance;
-  }
-
-  // Get or create event list for grid
-  getEventObject(gridId) {
-    let events = this._eventList.get(gridId);
-    if (!events) {
-      this._eventList.set(gridId, []);
-      events = this._eventList.get(gridId);
-    }
-    return events;
-  }
-}
-
-// ============================================
-// EditableGrid Class - Main grid controller
-// ============================================
-class EditableGrid {
-  constructor(instance, gridId, parentEntity, rows) {
-    this.instance = instance;
-    this.gridId = gridId;
-    this.parentEntity = parentEntity;
-    this.serviceBus = ServiceBus.getServiceBus();
-    this.rows = rows;
-  }
-
-  // Set readonly columns state
-  setReadOnlyColumns(readOnlyColumns) {
-    this.sendMessageRequest('setReadOnlyColumns', readOnlyColumns);
-  }
-
-  // Set readonly columns state by row
-  setReadOnlyColumnsByRow(rowId, readOnlyColumns) {
-    this.sendMessageRequest('setReadOnlyColumnsByRow', {
-      rowId: rowId,
-      columnNames: readOnlyColumns,
-    });
-  }
-
-  // Set Row Highlight
-  setRowHighlight(rowId, highlight) {
-    this.sendMessageRequest('setRowHighlight', { rowId: rowId, highlight: highlight });
-  }
-
-  // Set VisibleHiddenColumns
-  setVisibleHiddenColumns(visibleHiddenColumns) {
-    this.sendMessageRequest('setVisibleHiddenColumns', visibleHiddenColumns);
-  }
-  // Get parent entity
-  getParentEntity() {
-    return this.parentEntity;
-  }
-
-  // Get all rows
-  getRows() {
-    return this.rows;
-  }
-
-  // Get specific row by ID
-  getRow(rowId) {
-    return this.rows.find((row) => row.rowId === rowId);
-  }
-
-  // Register onLoad event
-  addOnLoad(handler) {
-    this.serviceBus.subscribe(this.instance, this.gridId, 'addOnLoad', handler);
-    this.sendRequest('addOnLoad');
-  }
-
-  removeOnLoad(handler) {
-    this.serviceBus.unsubscribe(this.gridId, 'addOnLoad', handler);
-  }
-
-  // Register onNew event
-  addOnNew(handler) {
-    this.serviceBus.subscribe(this.instance, this.gridId, 'addOnNew', handler);
-    this.sendRequest('addOnNew');
-  }
-
-  removeOnNew(handler) {
-    this.serviceBus.unsubscribe(this.gridId, 'addOnNew', handler);
-  }
-
-  // Register onNewForm event
-  addOnNewForm(handler) {
-    this.serviceBus.subscribe(this.instance, this.gridId, 'addOnNewForm', handler);
-    this.sendRequest('addOnNewForm');
-  }
-
-  removeOnNewForm(handler) {
-    this.serviceBus.unsubscribe(this.gridId, 'addOnNewForm', handler);
-  }
-
-  // Register onQuickView event
-  addOnQuickView(handler) {
-    this.serviceBus.subscribe(this.instance, this.gridId, 'addOnQuickView', handler);
-    this.sendRequest('addOnQuickView');
-  }
-
-  removeOnQuickView(handler) {
-    this.serviceBus.unsubscribe(this.gridId, 'addOnQuickView', handler);
-  }
-
-  // Register onChange event
-  addOnChange(columnName, handler) {
-    this.serviceBus.subscribe(this.instance, this.gridId, 'addOnChange', handler, columnName);
-    this.sendRequest('addOnChange', columnName);
-  }
-
-  removeOnChange(columnName, handler) {
-    this.serviceBus.unsubscribe(this.gridId, 'addOnChange', handler, columnName);
-  }
-
-  // Register onSave event
-  addOnSave(handler) {
-    this.serviceBus.subscribe(this.instance, this.gridId, 'addOnSave', handler);
-    this.sendRequest('addOnSave');
-  }
-
-  removeOnSave(handler) {
-    this.serviceBus.unsubscribe(this.gridId, 'addOnSave', handler);
-  }
-
-  // Refresh grid data
-  refresh() {
-    this.sendRequest('refresh');
-  }
-
-  // Internal: Send request to parent window
-  sendRequest(eventName, columnName) {
-    const message = {
-      gridId: this.gridId,
-      frameId: window.frameElement?.id,
-      eventName,
-      columnName,
-      messageType: 'event',
-    };
-    window.top?.postMessage(JSON.stringify(message));
-  }
-
-  sendMessageRequest(messageType, value, requestId) {
-    let message = {
-      messageType,
-      frameId: window.frameElement?.id || '',
-      gridId: this.gridId,
-      value: value,
-      requestId,
-    };
-
-    // Add specific properties based on message type
-    if (messageType === 'setReadOnlyColumns') {
-      message = { ...message, readOnlyColumns: value };
-    } else if (messageType === 'setReadOnlyColumnsByRow') {
-      message = { ...message, readOnlyColumnsByRow: value };
-    } else if (messageType === 'setRowHighlight') {
-      message = { ...message, highlightRow: value };
-    } else if (messageType === 'setVisibleHiddenColumns') {
-      message = { ...message, visibleHiddenColumns: value };
-    }
-
-    window.top?.postMessage(JSON.stringify(message));
-  }
-}
-
-// ============================================
-// Controls Class - Main API entry point
-// ============================================
-class Controls {
-  constructor() {
-    this._editableGrids = [];
-  }
-
-  // Get editable grid instance
-  async getEditableGrid(instance, gridId) {
-    await this.waitForGridLoad(gridId);
-
-    return new Promise((resolve, reject) => {
-      const message = {
-        messageType: 'getEditableGrid',
-        frameId: window.frameElement?.id,
-        gridId,
-      };
-
-      window.top?.postMessage(JSON.stringify(message));
-
-      const timeout = setTimeout(() => {
-        window.removeEventListener('message', messageHandler);
-        console.error(
-          'Editable grid request timed out. The operation exceeded the 60-second limit.',
-        );
-        resolve(null);
-      }, 60000);
-
-      const messageHandler = (event) => {
-        const response = JSON.parse(event.data);
-
-        if (response?.messageType === 'gridReady' && response.controlName === gridId) {
-          clearTimeout(timeout);
-          window.removeEventListener('message', messageHandler);
-
-          const payload = response.payload;
-          const rows = payload.rows.map((rowData) => {
-            const cells = rowData.cells.map((cellData) => new Cell(cellData));
-            return new Row(rowData.rowId, cells);
-          });
-
-          const grid = new EditableGrid(instance, payload.gridId, payload.parentEntity, rows);
-
-          // Store grid reference
-          const gridRef = this._editableGrids.find((g) => g.gridId === gridId);
-          if (gridRef) {
-            gridRef.grid = grid;
-          }
-
-          resolve(grid);
-        }
-      };
-
-      window.addEventListener('message', messageHandler);
-    });
-  }
-
-  // Wait for grid to be ready
-  waitForGridLoad(gridId) {
-    return new Promise((resolve, reject) => {
-      // Check if already loaded
-      if (this.gridAlreadyLoaded(gridId)) {
-        resolve();
+  // Waits for the bundled SDK to publish itself (it replaces this shim on the shared namespace).
+  function waitForBundledSdk() {
+    return new Promise(function (resolve) {
+      if (isBundled(topWindow.YanaEditableGrid)) {
+        resolve(topWindow.YanaEditableGrid);
         return;
       }
 
-      // Request grid ready status
-      window.top?.postMessage(
-        JSON.stringify({
-          messageType: 'isStoreReady',
-          frameId: window.frameElement?.id,
-          gridId,
-        }),
-      );
-
-      const timeout = setTimeout(() => {
-        window.removeEventListener('message', messageHandler);
-        console.error(
-          'Editable grid request timed out. The operation exceeded the 60-second limit.',
-        );
-        resolve(null);
-      }, 60000);
-
-      const messageHandler = (event) => {
-        const response = JSON.parse(event.data);
-
-        if (response?.messageType === 'storeReady' && response.controlName === gridId) {
-          clearTimeout(timeout);
-          window.removeEventListener('message', messageHandler);
-
-          this._editableGrids.push({
-            gridId,
-            loaded: true,
-          });
-
-          resolve();
+      var elapsed = 0;
+      var interval = setInterval(function () {
+        if (isBundled(topWindow.YanaEditableGrid)) {
+          clearInterval(interval);
+          resolve(topWindow.YanaEditableGrid);
+          return;
         }
-      };
 
-      window.addEventListener('message', messageHandler);
+        elapsed += POLL_INTERVAL_MS;
+        if (elapsed >= DELEGATE_TIMEOUT_MS) {
+          clearInterval(interval);
+          resolve(null);
+        }
+      }, POLL_INTERVAL_MS);
     });
   }
 
-  // Check if grid is already loaded
-  gridAlreadyLoaded(gridId) {
-    return this._editableGrids.some((grid) => grid.loaded && grid.gridId === gridId);
+  var deprecationWarned = false;
+
+  var shim = {
+    __shim: true,
+
+    // Legacy entry point — same signature and timeout semantics as the v1.4.x library.
+    getEditableGrid: function (instance, gridId) {
+      if (!deprecationWarned) {
+        deprecationWarned = true;
+        console.warn(
+          '[YanaGrid] Technosoft.Yana.Grid.js is deprecated. The SDK is bundled with the ' +
+            'YanaGrid control (v1.5.0+): remove this form library and use ' +
+            'formContext.getControl(name).addOnOutputChange(...) with window.top.YanaEditableGrid.getEditableGrid(name). ' +
+            'This shim will be removed in a future major version.',
+        );
+      }
+
+      return waitForBundledSdk().then(function (bundled) {
+        if (!bundled) {
+          console.error(
+            'Editable grid request timed out. The operation exceeded the 60-second limit. ' +
+              '(Bundled YanaGrid SDK not found — is a YanaGrid control v1.5.0+ on this form?)',
+          );
+          return null;
+        }
+        return bundled.getEditableGrid(instance, gridId);
+      });
+    },
+  };
+
+  // Publish only when the bundle has not already claimed the namespace.
+  if (!isBundled(topWindow.YanaEditableGrid)) {
+    topWindow.YanaEditableGrid = shim;
   }
-}
 
-// ============================================
-// Initialize and Export
-// ============================================
-const YanaEditableGrid = new Controls();
-window.top.YanaEditableGrid = YanaEditableGrid;
+  // Also expose the namespace on THIS frame's global, so a form library loaded alongside this web
+  // resource can call `YanaEditableGrid.getEditableGrid(...)` without the `window.top.` prefix (a
+  // bare identifier resolves against the running frame's window, not window.top). Mirror whatever
+  // owns the top namespace — the bundle if it has claimed it, otherwise this shim; the shim still
+  // delegates to window.top at call time, so a late-arriving bundle is picked up either way. When
+  // the form isn't framed (window === topWindow) the publish above already exposed it locally.
+  if (window !== topWindow && !isBundled(window.YanaEditableGrid)) {
+    window.YanaEditableGrid = topWindow.YanaEditableGrid;
+  }
 
-// Export for module systems
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { YanaEditableGrid, Controls };
-}
+  // Export for module systems
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { YanaEditableGrid: topWindow.YanaEditableGrid };
+  }
+})();

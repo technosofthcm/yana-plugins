@@ -17,7 +17,7 @@ This plugin is for developers integrating Yana controls into their own customer 
 | Claude Code (CLI, desktop, web, or IDE extension) | yes |
 | `pac` (Power Platform CLI) | recommended — used when the integration skill suggests checklist steps |
 | A Power Platform environment to receive the umbrella solution | yes |
-| `TechnosoftDmsCoreComponents` managed solution | yes — request from Technosoft |
+| `CORE Custom Control` managed solution | yes — request from Technosoft |
 
 ---
 
@@ -58,7 +58,7 @@ The plugin ships slash commands (scaffolding integrations) and auto-loading skil
 
 ## Versioning
 
-The plugin version tracks the umbrella solution version. For example, `yana-pcf-sdk@1.4.0` documents the surface of `TechnosoftDmsCoreComponents@1.4.0`. Always install the plugin version matching the solution version your customer environment is on.
+The plugin version tracks the umbrella solution version. For example, `yana-pcf-sdk@1.4.0` documents the surface of `CORE Custom Control` v1.4.0. Always install the plugin version matching the solution version your customer environment is on.
 
 ---
 
@@ -66,7 +66,7 @@ The plugin version tracks the umbrella solution version. For example, `yana-pcf-
 
 `yana-pcf-sdk` is licensed under **Apache License 2.0**. See the `LICENSE` and `NOTICE` files in the plugin repository.
 
-The PCF control binaries inside `TechnosoftDmsCoreComponents` are distributed separately under Technosoft's commercial terms — they are **not** covered by the plugin license.
+The PCF control binaries inside `CORE Custom Control` are distributed separately under Technosoft's commercial terms — they are **not** covered by the plugin license.
 
 ---
 
@@ -84,4 +84,4 @@ The PCF control binaries inside `TechnosoftDmsCoreComponents` are distributed se
 
 ---
 
-> **Bundle metadata** — generated 2026-05-13 from `.public-docs/plugin-install.md` for plugin version 2.0.0.
+> **Bundle metadata** — generated 2026-07-31 from `.public-docs/plugin-install.md` for plugin version 1.5.0.

@@ -212,7 +212,7 @@ YanaQuickView is read-only and config-driven; it exposes no JavaScript event API
 
 | Version | Status | Namespace |
 |---------|--------|-----------|
-| 1.0.0 | Initial release — ships in `TechnosoftDmsCoreComponents` umbrella solution v1.4.0 | `Technosoft.DMS.XRM.CustomControl.QuickView` |
+| 1.0.0 | Initial release — ships in `CORE Custom Control` umbrella solution v1.4.0 | `Technosoft.DMS.XRM.CustomControl.QuickView` |
 
 See `yanaquickview-releases.md` for change history.
 
@@ -227,4 +227,4 @@ See `yanaquickview-releases.md` for change history.
 
 ---
 
-> **Bundle metadata** — generated 2026-05-13 from `.public-docs/yanaquickview-api.md` for plugin version 2.0.0.
+> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanaquickview-api.md` for plugin version 1.5.0.

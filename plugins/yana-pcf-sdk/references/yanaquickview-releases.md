@@ -7,7 +7,7 @@ Curated, version-by-version change history for the standalone YanaQuickView cont
 ## v1.0.0 — May 2026
 
 **Initial release.**
-**Solution:** Ships inside umbrella `TechnosoftDmsCoreComponents` (introduced with YanaGrid v1.4.0)
+**Solution:** Ships inside umbrella `CORE Custom Control` (`CORECustomControl`, introduced with YanaGrid v1.4.0)
 
 ### Features
 
@@ -29,10 +29,9 @@ Curated, version-by-version change history for the standalone YanaQuickView cont
 
 ### Deployment
 
-YanaQuickView v1.0.0 ships inside the umbrella Dataverse solution `TechnosoftDmsCoreComponents`. It is **not** published as a separate solution.
+YanaQuickView v1.0.0 ships inside the umbrella Dataverse solution **CORE Custom Control** (`CORECustomControl`). It is **not** published as a separate solution.
 
-- **New tenants:** install `TechnosoftDmsCoreComponents` (managed).
-- **Existing tenants upgrading from per-control solutions:** see `yanagrid-install.md` → **Migration**.
+- **New tenants:** install `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`).
 
 ### Origin
 
@@ -49,4 +48,4 @@ The same Quick View component is embedded in the YanaGrid toolbar (YanaGrid v1.4
 
 ---
 
-> **Bundle metadata** — generated 2026-05-13 from `.public-docs/yanaquickview-releases.md` for plugin version 2.0.0.
+> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanaquickview-releases.md` for plugin version 1.5.0.

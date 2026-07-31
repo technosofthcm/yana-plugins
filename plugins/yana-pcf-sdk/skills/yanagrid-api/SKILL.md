@@ -1,7 +1,7 @@
 ---
 name: yanagrid-api
 description: Used when looking up YanaGrid manifest properties, behavior contracts, configuration XML shape, error messages, or compatibility limits — NOT for JavaScript events or JS API questions.
-when_to_use: manifest property, footerAggregateColumns, calculationFormulas, parentUpdateFormulas, enableGroupBy, readOnlyColumns, readOnlyStatus, autoSaveRecord, dataset, error message, error code, Quick View toolbar configuration, xts_pluginconfiguration, compatibility, limitations, Formula., configuration XML, FetchXML placeholder, supported types.
+when_to_use: manifest property, footerAggregateColumns, calculationFormulas, parentUpdateFormulas, gridEvent, readOnlyColumns, readOnlyStatus, autoSaveRecord, dataset, error message, error code, Quick View toolbar configuration, xts_pluginconfiguration, compatibility, limitations, Formula., configuration XML, FetchXML placeholder, supported types, grouping, column order, column reordering, coloured choice values, colored choice values, client-side paging, page size.
 ---
 
 # YanaGrid API Reference
@@ -22,10 +22,16 @@ All paths resolve under `${CLAUDE_SKILL_DIR}/../../references/`. Use `Read` with
 | User asks | File | §Section |
 |-----------|------|----------|
 | YanaGrid manifest property by name | `yanagrid-api.md` | §Property reference |
+| `gridEvent` output property | `yanagrid-api.md` | §Property reference (`gridEvent` (output, v1.5.0)) |
 | YanaGrid Quick View toolbar config | `yanagrid-api.md` | §Quick View toolbar |
+| Grouping behavior / column-header grouping menu | `yanagrid-api.md` | §Grouping |
+| Column order / drag-to-reorder columns | `yanagrid-api.md` | §Column order (v1.5.0) |
+| Coloured / colored choice values | `yanagrid-api.md` | §Coloured choice values (v1.5.0) |
+| Client-side paging / page size behavior | `yanagrid-api.md` | §Paging (v1.5.0, client-side) |
 | "What happens when..." behavior contract | `yanagrid-api.md` | §Behavior contracts |
 | Config XML recipe (Grid) | `yanagrid-api.md` | §Configuration recipes |
 | Error code / message lookup (Grid) | `yanagrid-api.md` | §Errors |
 | Supported types / compatibility (Grid) | `yanagrid-api.md` | §Compatibility |
 | Limits / known limitations (Grid) | `yanagrid-api.md` | §Limitations |
+| Removed properties (`enableGroupBy`, `defaultPageSize`) | `yanagrid-api.md` | §Property reference (Removed in v1.5.0 call-out) |
 | Behavior changes by release (Grid) | `yanagrid-api.md` | §Versioning |
