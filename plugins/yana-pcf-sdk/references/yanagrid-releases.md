@@ -4,6 +4,58 @@ Curated, version-by-version change history for YanaGrid. Each entry summarises u
 
 ---
 
+## Unreleased
+
+**Solution:** Managed `CORE Custom Control` (`CORECustomControl`)
+
+Adds solution-shipped icons for command buttons and cell icons, plus a wider set of icon sources.
+
+### New features
+
+- **Row-selection events.** `addOnSelectionChange` / `removeOnSelectionChange` notify a form script whenever the grid's effective row selection changes, and `getSelection()` reads the current selection on demand (useful for the initial state, since no notification fires on load). A notification tracks the selected *set*, not the gesture: re-clicking an already-selected row is silent, and so are filtering and an ordinary page change. Sorting is not yet confirmed silent — write your handler so re-running it for an unchanged selection is harmless. See **`addOnSelectionChange` / `removeOnSelectionChange`** in the events reference for the full contract.
+- **Web-resource icons.** `addButton` and `cell.setIcon` accept a new `webResourceIcon` field taking a Dataverse web resource **name** (e.g. `"xts_/icons/vin.svg"`). The artwork must be **monochrome**: it is painted in the text colour beside it, so it follows the button's hover/pressed/disabled state and dims with a read-only cell for free. It renders in a fixed 16×16 box, so any source dimensions leave command bar height, row height and column width untouched, and it takes precedence over `icon` / `name`. See **Button and cell icons** in the events/API reference.
+- **More icon sources.** The existing `icon` (button) and `name` (cell) fields now also accept an emoji or symbol (`"emoji:✅"`, or a bare symbol), a web-resource path (`"url:/WebResources/…"`), and an image data URI — alongside Fluent UI icon names, which are unchanged.
+- **Graceful degradation.** A web resource that does not exist or is not published leaves the button with its label and the cell with its value — including `position: "only"` — and logs a console warning naming the button or row/column and the resource it rejected.
+
+### Behaviour changes
+
+| Change | Who is affected | Action |
+|--------|-----------------|--------|
+| A cell icon with an explicit `color` now dims on a read-only cell, matching the cell's own text. | Scripts calling `setIcon` with `color` on rows that can become read-only. | None required. Omit `color` if you want the icon to track the cell's text colour in every state. |
+| An unrecognised icon value is never drawn as literal text. | Scripts passing a mistyped Fluent name containing punctuation (`"Save-2"`, `"Warning!"`). | None required — these render no icon, as they always did. Fix the name to get the icon back, or use `"emoji:…"` if you genuinely wanted the character. |
+
+---
+
+## v1.5.1 — August 2026
+
+**Upgrade from:** v1.5.0
+**Solution:** Managed `CORE Custom Control` (`CORECustomControl`)
+
+A bugfix release correcting three defects in the JavaScript SDK contract. All three are long-standing — they behave the same way on v1.4.x — and were found by the SDK regression pass for v1.5.0. No configuration properties change, and YanaQuickView is unaffected.
+
+### Fixes
+
+- **`getParentEntity()` returned nothing when the grid was fetched directly.** A grid obtained with `getEditableGrid(...)` reported `getParentEntity()` as `undefined`, while an event handler's `eventContext.data.parentEntity` was populated in the same session. Both paths now return the same host form entity reference.
+- **The SDK listed cells the grid does not display.** `row.cells` included hidden columns, which have no on-screen editor. Reading them was misleading, and writing to one never completed. The UI and SDK now use the same ordered column inventory. A bound column that starts hidden and is explicitly shown at runtime joins both inventories; runtime hide/show remains synchronized. A visible column remains present even when Dataverse reports no data type for it.
+- **`setValue` could hang forever.** A `setValue` the grid never acknowledged left the promise pending with no error. It now rejects after 6 seconds with a `YanaGridTimeoutError`.
+- **`getRequiredLevel()` reported optional cells as required.** It returned the string `'none'` — which is truthy — for a cell whose required level had never been set, so `if (cell.getRequiredLevel())` was true for every optional cell. It now returns `false`, and is a boolean in every state.
+
+### Upgrade guidance
+
+| Scenario | Action |
+|----------|--------|
+| `await cell.setValue(...)` anywhere in your script | No action. A call that now times out could never complete before, so no working code changes behaviour. |
+| `cell.setValue(...)` called **without** `await` and without `.catch()` | Add a `.catch()`. A timeout now surfaces as an unhandled promise rejection in the browser console instead of failing silently. Test the error with `err.name === 'YanaGridTimeoutError'`. |
+| `if (cell.getRequiredLevel())` | No action, and the result is now correct — it previously treated every optional cell as required. |
+| `cell.getRequiredLevel() === true \|\| cell.getRequiredLevel() === 'required'` | No action. The defensive form still works and can be simplified to `cell.getRequiredLevel()`. |
+| `cell.getRequiredLevel() === 'none'` | **Change required.** This never matches on v1.5.1. Use `!cell.getRequiredLevel()`. |
+| Reading `isRequired` from the raw `table` in an event payload | Expect a boolean rather than `'required'` / `'none'`. |
+| Iterating `row.cells` and relying on hidden columns being present | **Review.** Hidden columns are no longer listed. Make the column visible in the bound view if your script needs it. |
+| Registered `Technosoft.Yana.Grid.js` as a form library | No action. It delegates to the bundled SDK, so it picks up all of the above automatically. |
+| Not using the JavaScript SDK | No action required. |
+
+---
+
 ## v1.5.0 — July 2026
 
 **Upgrade from:** v1.4.5
@@ -44,7 +96,7 @@ An extensibility-focused release: a bundled JavaScript SDK with zero setup, a cu
 
 ### Property changes
 
-- **Removed**: `enableGroupBy` — grouping is now always-on; no replacement property is needed.
+- **Retained (hidden)**: `enableGroupBy` — the property still exists and continues to be honoured, but it is now hidden from the configuration dialog and defaults to `true`. Existing bindings, including `enableGroupBy = false`, keep working unchanged; no action is required.
 - **Removed**: `defaultPageSize` — page size is no longer a manifest setting; the grid now pages client-side using the sub-grid's own "Maximum number of rows" configuration (see **Client-side paging** above).
 - **New**: `gridEvent` (output) — a machine-written JSON descriptor `{"eventName","controlName","sequence"}` written at store-ready and on every grid lifecycle event. It is the supported wake-up channel for the bundled SDK (`addOnOutputChange`) and is never configured by an implementer — it does not appear in the control's configuration dialog.
 
@@ -53,7 +105,7 @@ An extensibility-focused release: a bundled JavaScript SDK with zero setup, a cu
 | Scenario | Action |
 |----------|--------|
 | Was using `enableGroupBy = true` | No action. Behavior is unchanged — grouping was already on. |
-| Was using `enableGroupBy = false` | Grouping becomes visible to end users after upgrading. If you need to prevent grouping for a specific sub-grid, contact the Technosoft DMS Core team. |
+| Was using `enableGroupBy = false` | No action required. The property is retained (hidden, not removed) and continues to be honoured, so grouping stays hidden for that sub-grid after upgrading. |
 | Was using `defaultPageSize` | The property is removed. Page size now follows the sub-grid's own "Maximum number of rows" setting — verify that setting reflects the page size you want end users to see. |
 | Registered `Technosoft.Yana.Grid.js` as a form library | Keep working unchanged. New form scripts do not need to register it — see `yanagrid-events.md`. |
 | Using default configuration (no removed properties set) | No action required. |
@@ -263,7 +315,7 @@ Ships in the **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse so
 
 | From → To | Action |
 |-----------|--------|
-| any → v1.5.0 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). `enableGroupBy` and `defaultPageSize` are removed — see **Property changes** and **Upgrade guidance** under v1.5.0 above. New `gridEvent` output property needs no action. |
+| any → v1.5.0 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). `defaultPageSize` is removed; `enableGroupBy` is retained (hidden, not removed) — see **Property changes** and **Upgrade guidance** under v1.5.0 above. New `gridEvent` output property needs no action. |
 | any → v1.4.5 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.4.4. |
 | any → v1.4.4 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.4.3. |
 | any → v1.4.3 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.4.2. |
@@ -284,4 +336,4 @@ Ships in the **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse so
 
 ---
 
-> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanagrid-releases.md` for plugin version 1.5.0.
+> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-releases.md` for plugin version 1.4.0.

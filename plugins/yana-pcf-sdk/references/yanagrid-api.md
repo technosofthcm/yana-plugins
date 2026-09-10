@@ -8,7 +8,7 @@ This document is the **public API surface**. It describes the manifest propertie
 
 ---
 
-## JS SDK library
+## JS SDK (bundled — zero setup since v1.5.0)
 
 The JS SDK provides programmatic event subscription and cell manipulation from form-level scripts: subscribe to grid lifecycle events (`addOnLoad`, `addOnChange`, `addOnSave`, and more), read and set cell values, apply conditional read-only rules, and add cell notifications — all without modifying the control's manifest configuration.
 
@@ -101,6 +101,8 @@ this.Xts_UnitPrice_OnChange = async function (that, context) {
 
 `Technosoft.Yana.Grid.js` still ships for backward compatibility, but since v1.5.0 its body is a thin shim that delegates to the bundled SDK (same `getEditableGrid(context, gridId)` signature, same 60-second wait-for-ready timeout, console-only deprecation notice). Existing forms that register it as a form library keep working unchanged, **but the shim requires a YanaGrid control ≥ 1.5.0 on the form**. New consumers should not register it. It will be removed in a future major version.
 
+Since **v1.6.0** the bundled SDK also reports row-selection changes — `addOnSelectionChange` / `removeOnSelectionChange` and the on-demand `getSelection()` read — with no manifest configuration required.
+
 See `yanagrid-events.md` for the full JS SDK reference.
 
 ---
@@ -123,7 +125,9 @@ See `yanagrid-events.md` for the full JS SDK reference.
 
 Quick View is also activated automatically when an `xts_pluginconfiguration` record exists for the entity — see **Quick View toolbar** below.
 
-**Removed in v1.5.0**: `enableGroupBy` — grouping is now always available from the column-header context menu, and the grouping chip carries Expand all / Collapse all. `defaultPageSize` — page size now resolves at runtime from the sub-grid configuration. See `yanagrid-releases.md` for migration details.
+**Removed in v1.5.0**: `defaultPageSize` — page size now resolves at runtime from the sub-grid configuration. See `yanagrid-releases.md` for migration details.
+
+**Retained (hidden) in v1.5.0**: `enableGroupBy` still exists on the control but is hidden from the configuration dialog and defaults to `true`. It is not removed, and existing bindings — including `enableGroupBy = false` — continue to be honoured unchanged.
 
 ---
 
@@ -145,6 +149,7 @@ Renders an aggregate row at the bottom of the grid for the listed columns.
 - **Functions**: `sum`, `avg`, `min`, `max`, `count`. Default is `sum` when omitted.
 - **Example**: `"totalamount:sum, quantity:sum, duration:avg"`
 - **Notes**: Only numeric columns aggregate. Non-numeric columns are silently ignored.
+- The same configuration also drives a per-group aggregate strip in each group header when grouping is active. See **Group aggregates** under Grouping.
 
 ### `autoSaveRecord`
 
@@ -233,7 +238,19 @@ When a column is grouped, a **Grouped by** chip appears on the left of the comma
 
 You can also remove grouping from the column header menu by choosing **Remove grouping**.
 
-> **Design note (v1.5.0):** Grouping became always-on in v1.5.0. Prior versions exposed an `enableGroupBy` manifest property to toggle this capability; that property was removed because grouping is now unconditionally available and discoverable from the column-header menu. See `yanagrid-releases.md` for migration details.
+### Group aggregates
+
+Each group header renders an aggregate strip driven by the same `footerAggregateColumns` property used for the footer aggregate row. There is no separate property and no per-group override; the configured columns and functions apply identically to the footer and to every group.
+
+- **Functions**: `sum`, `avg`, `min`, `max`, `count`. Omitted or unrecognised function names default to `sum`.
+- **Scope**: shown only while grouping is active. Removing grouping removes the header aggregates; the footer aggregate row is unaffected.
+- **Record set**: each group's aggregate covers that group's records after the active quick-find filter, the same filtered set used by the footer and the flat row list.
+- **Live update**: inline edits update the affected group's aggregate immediately, with no save and no server call.
+- **Format**: same as the footer, `Column display name (function): value`, e.g. `Amount (sum): 1,234.00`, with matching numeric formatting (currency symbol, decimals).
+- **Out of scope**: no aggregate functions beyond the five listed above, and no per-group formula overrides.
+- **Known issue (Bug 423237)**: if a group has no numeric values for a configured column, that group's header omits the aggregate while the footer shows 0 for the same configuration.
+
+> **Design note (v1.5.0):** Grouping is effectively always available in v1.5.0. The underlying `enableGroupBy` manifest property still exists and is still honoured, but it is now hidden from the configuration dialog and defaults to `true`, so grouping is available out of the box without configuring anything. A sub-grid that already had `enableGroupBy = false` keeps grouping hidden after upgrading. See `yanagrid-releases.md` for migration details.
 
 ---
 
@@ -345,6 +362,13 @@ These are the runtime guarantees the control offers. Integrators can rely on the
 - Footer aggregates, `calculationFormulas`, and `parentUpdateFormulas` all compute over the **full in-memory record set**, not just the rows on the current page.
 - Sorting, keyword search, grouping, row selection, and validation all operate consistently across pages.
 
+### Layout & sizing
+
+- The grid reserves a **full page-size height** — a page size of N (the bound view's rows-per-page / `defaultPageSize`, default 5) renders an N-row-tall grid regardless of the current record count. The height is **stable when rows are added** within the page.
+- For large page sizes the grid height is **capped to ~60% of the viewport**; rows beyond what fits scroll vertically inside the grid rather than expanding the control. The height recomputes on window resize.
+- The **Add row** action lives on the command bar (alongside Refresh / Save / Delete). Adding a row appends a blank row, scrolls it into view, and focuses its first editable cell.
+- Cell content is **vertically centered** within each row. Read-only / non-editable cells render with a muted gray fill at full cell height (including when empty) and a default cursor, distinguishing them from editable cells.
+
 ---
 
 ## Configuration recipes
@@ -436,7 +460,7 @@ Save failures surface the underlying Dataverse error message verbatim (e.g. requ
 
 | Version | Status | Namespace |
 |---------|--------|-----------|
-| 1.5.0 | Current — bundled zero-setup SDK; custom cell rendering, configurable commands/read-only grid, custom command-bar buttons, data-change events, runtime option-set filtering; grouping always-on (`enableGroupBy` removed); client-side paging (`defaultPageSize` removed); drag-to-reorder columns; coloured choice values; new `gridEvent` output | `Technosoft.DMS.XRM.CustomControl.Grid` |
+| 1.5.0 | Current — bundled zero-setup SDK; custom cell rendering, configurable commands/read-only grid, custom command-bar buttons, data-change events, runtime option-set filtering; grouping always available (`enableGroupBy` retained, hidden, defaults to `true`); client-side paging (`defaultPageSize` removed); drag-to-reorder columns; coloured choice values; new `gridEvent` output | `Technosoft.DMS.XRM.CustomControl.Grid` |
 | 1.4.0 | Previous — adds Quick View toolbar + ships in umbrella `CORE Custom Control` solution | `Technosoft.DMS.XRM.CustomControl.Grid` |
 
 See `yanagrid-releases.md` for full version history and migration notes.
@@ -453,4 +477,4 @@ See `yanagrid-releases.md` for full version history and migration notes.
 
 ---
 
-> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanagrid-api.md` for plugin version 1.5.0.
+> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-api.md` for plugin version 1.4.0.

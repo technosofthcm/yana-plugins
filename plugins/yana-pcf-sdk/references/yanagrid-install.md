@@ -161,8 +161,9 @@ After saving the configuration record, refresh the host form. The Quick View ico
 | 3 | If `autoSaveRecord=true`, leaving the row commits the change. |
 | 4 | If `footerAggregateColumns` is set, the footer row shows the aggregate. |
 | 5 | The column header menu offers **Group by this column** (grouping is always available). When a column is grouped, the **Grouped by** chip on the command bar shows **Expand all**, **Collapse all**, and **Remove** controls. |
-| 6 | If Quick View is configured, the toolbar shows the Quick View icon and clicking it opens the accordion dialog. |
-| 7 | If `parentUpdateFormulas` is set, saving a row updates the parent form fields. |
+| 6 | With `footerAggregateColumns` set, group by a column and confirm each group heading shows the same aggregates as the footer, calculated for that group's records only. |
+| 7 | If Quick View is configured, the toolbar shows the Quick View icon and clicking it opens the accordion dialog. |
+| 8 | If `parentUpdateFormulas` is set, saving a row updates the parent form fields. |
 
 ---
 
@@ -190,4 +191,4 @@ For issues not listed here, see `yanagrid-manual.md` → **Support** for the sup
 
 ---
 
-> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanagrid-install.md` for plugin version 1.5.0.
+> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-install.md` for plugin version 1.4.0.

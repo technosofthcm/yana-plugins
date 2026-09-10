@@ -1,6 +1,6 @@
 {
   "name": "yana-pcf-sdk",
-  "version": "2.1.0",
+  "version": "1.4.0",
   "description": "External developer SDK for Yana PCF controls (YanaGrid, YanaQuickView). Reference docs + scaffold commands for Power Platform integration. The plugin is versioned independently of the umbrella CORE Custom Control solution; bundle-plugin.ps1 stamps the solution version here, so reset it to the intended plugin version after bundling.",
   "author": {
     "name": "Technosoft HCM",

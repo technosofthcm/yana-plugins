@@ -134,4 +134,4 @@ For issues or feature requests, contact the Technosoft DMS Core team.
 
 ---
 
-> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanaquickview-manual.md` for plugin version 1.5.0.
+> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanaquickview-manual.md` for plugin version 1.4.0.

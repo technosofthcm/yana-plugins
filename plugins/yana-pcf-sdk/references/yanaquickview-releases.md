@@ -48,4 +48,4 @@ The same Quick View component is embedded in the YanaGrid toolbar (YanaGrid v1.4
 
 ---
 
-> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanaquickview-releases.md` for plugin version 1.5.0.
+> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanaquickview-releases.md` for plugin version 1.4.0.

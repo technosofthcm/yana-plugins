@@ -24,6 +24,7 @@ Key capabilities:
 | Auto-save (optional) | Saves automatically when you move to a different row |
 | Grouping | Group rows by a column, e.g. group parts by category |
 | Footer totals | Aggregate columns (sum, average, etc.) shown beneath the grid |
+| Group subtotals | The same aggregate columns, shown per group when rows are grouped |
 | Calculation formulas | Auto-calculate a column from other columns |
 | Parent updates | Roll up totals from the grid into fields on the parent form |
 | Quick View toolbar | Side-panel showing related-entity data (when configured) |
@@ -86,9 +87,11 @@ When a column is grouped, a **Grouped by** chip appears on the command bar. Use 
 
 You can also remove grouping from the column header menu by choosing **Remove grouping**.
 
+When your screen is also set up with footer totals (see Footer totals below), each group heading shows the same subtotals for that group's own rows. For example, if the footer shows a total quantity for all rows, each group heading shows the total quantity for just the rows in that group. Editing a value updates the group's subtotal right away, and the subtotal only counts rows that match your current search. If you clear grouping, the subtotals in the group headings disappear, but the footer totals row is unaffected. If a group has no values to total for a column, that group's heading may show nothing for that column even though the footer shows a total of zero for the same column; this is a known display inconsistency.
+
 ## Footer totals
 
-When the screen is configured with footer columns, the totals row sits beneath the grid. The function (sum, average, minimum, maximum, count) is set by the maker per column.
+When the screen is configured with footer columns, the totals row sits beneath the grid. The function (sum, average, minimum, maximum, count) is set by the maker per column. These same columns and functions also appear per group when rows are grouped — see Grouping rows above.
 
 ## Paging and grid height
 
@@ -211,4 +214,4 @@ For issues, behavior questions, or feature requests, contact the Technosoft DMS 
 
 ---
 
-> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanagrid-manual.md` for plugin version 1.5.0.
+> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-manual.md` for plugin version 1.4.0.

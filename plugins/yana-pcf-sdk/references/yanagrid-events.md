@@ -344,6 +344,69 @@ grid.addOnRowDelete((instance, ctx) => {
 
 ---
 
+### `addOnSelectionChange` / `removeOnSelectionChange` (since v1.6.0)
+
+```js
+grid.addOnSelectionChange(handler);
+grid.removeOnSelectionChange(handler);
+```
+
+**Trigger:** fires once per **effective** change to the grid's row selection — a row click, a
+shift-arrow range select, select all, clear selection, and so on. Idempotent for a stable handler
+reference: re-registering the same function (e.g. from a re-firing form OnLoad) replaces the prior
+registration instead of stacking a second delivery, rather than firing the handler twice.
+`removeOnSelectionChange` stops delivery to the given handler; a later selection change does not
+invoke it again.
+
+**`eventContext.data` shape:**
+
+| Property | Present | Description |
+|----------|---------|--------------|
+| `parentEntity` | always | Host form entity reference. |
+| `table` | **no** | Unlike every other event context. A selection change fires on every row click and every shift-arrow, and the grid's accepted ceiling is 5,000 rows, so shipping the whole table on every tick does not scale. Resolve rows through `data.selectedRows` below, or through an `EditableGrid` handle you already hold (from `getEditableGrid`, or from a prior event's `data.table`). |
+| `row` | no | — |
+| `cell` | no | — |
+
+`data` instead carries `selectedRowIds` (`string[]`, grid row keys in selection order — **never**
+pruned, so an id stays even after its row vanishes server-side) and `selectedRows` (`Row[]`, only
+the currently selected rows, resolved fresh from the notification — may be **shorter** than
+`selectedRowIds` for that same reason). Rows selected on other client-side pages **do** resolve in
+`selectedRows` — the selection key set spans every page, not just the one on screen.
+
+**Use:** keep a custom command button's visibility or disabled state in sync with the current
+selection, drive a bulk-action panel, log a selection audit trail.
+
+> - **No `gridEvent` output-property signal** is raised for a selection change. A consumer relying
+>   only on `addOnOutputChange` receives nothing for selection and must use
+>   `addOnSelectionChange` / `getSelection()` instead.
+> - **Emission tracks the selected set, never the gesture.** An operation that genuinely changes the
+>   selected set — select-all, clear-selection, filtering, paging, refresh, or deletion reconciling
+>   away a selected row — is reported like any other change. One that leaves the set untouched is
+>   not. For example, a page change that evicts a row you had just added (auto-saved, but the page
+>   hasn't re-fetched it yet) reports the change if that row was selected; a page change that leaves
+>   the selected set intact reports nothing. Do not assume paging is unconditionally silent.
+>
+>   Filtering is confirmed silent, as is an ordinary page change. **Sorting is not yet confirmed:**
+>   testing has observed a notification after a column sort, so treat a sort as *possibly* emitting
+>   and make your handler idempotent — re-applying your own logic for an unchanged selection should
+>   be harmless anyway, which is the safe way to write one of these handlers regardless.
+> - **No notification on load.** A fresh or reloaded grid starts with an empty selection and does
+>   not announce it — read the initial state with `getSelection()` instead (see **Grid state**
+>   below).
+> - **Selection events write no record data** and do not control any button's visibility
+>   automatically — wiring a selection to a button (or any other action) is entirely your own code.
+
+```js
+grid.addOnSelectionChange(function (instance, ctx) {
+    var selectedRowIds = ctx.data.selectedRowIds;
+    var selectedRows = ctx.data.selectedRows;
+
+    grid.setButtonVisible("bulkAction", selectedRowIds.length > 0);
+});
+```
+
+---
+
 ## EditableGrid reference
 
 Obtained via `window.top.YanaEditableGrid.getEditableGrid(instance, gridId)`. Represents the grid control and its current rows.
@@ -368,6 +431,8 @@ Obtained via `window.top.YanaEditableGrid.getEditableGrid(instance, gridId)`. Re
 | `removeOnRowSave` | `(handler) → void` | Unsubscribe. |
 | `addOnRowDelete` | `(handler) → void` | Subscribe to single-row removal (fires *after* a row is deleted). (since v1.5.0) |
 | `removeOnRowDelete` | `(handler) → void` | Unsubscribe. |
+| `addOnSelectionChange` | `(handler) → void` | Subscribe to effective row-selection changes. (since v1.6.0) |
+| `removeOnSelectionChange` | `(handler) → void` | Unsubscribe. |
 | `addButton` | `(def: CustomButtonDef) → void` | Add or update a custom command-bar button. (since v1.5.0) |
 | `removeButton` | `(id: string) → void` | Remove a custom command-bar button. (since v1.5.0) |
 | `setButtonDisabled` | `(id: string, disabled: boolean) → void` | Enable/disable a custom button. (since v1.5.0) |
@@ -381,7 +446,8 @@ Obtained via `window.top.YanaEditableGrid.getEditableGrid(instance, gridId)`. Re
 |--------|-----------|---------|-------------|
 | `getRows` | `() → Row[]` | Array of `Row` | All currently loaded rows. |
 | `getRow` | `(rowId: string) → Row \| undefined` | `Row` or `undefined` | Find a row by its `rowId`. |
-| `getParentEntity` | `() → object` | entity reference | Host form entity reference. |
+| `getParentEntity` | `() → object` | entity reference | Host form entity reference. Available on **both** ways of obtaining the grid — `getEditableGrid(...)` and an event handler's `eventContext.data.parentEntity` — and both return the same value. *(Fixed in v1.5.1: on v1.5.0 and earlier this returned `undefined` on the `getEditableGrid` path. Use the event path if you must support an older control.)* |
+| `getSelection` | `() → Promise<{ selectedRowIds, selectedRows }>` | `Promise` | Reads the grid's current selection on demand — the way to see the initial state, since no `addOnSelectionChange` notification fires on load. Resolves the same `{ selectedRowIds, selectedRows }` shape delivered to `addOnSelectionChange`. Rejects with a `YanaGridTimeoutError` if the grid does not acknowledge within 6 seconds (see **Limitations**) — an empty selection is meaningful data, so always `try`/`catch` rather than treat a timeout as "nothing selected". (since v1.6.0) |
 
 ### Grid manipulation
 
@@ -415,7 +481,8 @@ A consumer web resource or form script can register its own buttons in the grid'
 |----------|------|----------|-------------|
 | `id` | `string` | yes | Unique per grid — the key used by `removeButton`, `setButtonDisabled`, `setButtonVisible`, and click routing. |
 | `label` | `string` | yes | Visible button text. |
-| `icon` | `string` | no | Fluent UI icon **name** (e.g. `"Copy"`), not a URL. |
+| `icon` | `string` | no | Icon source. A Fluent UI icon **name** (`"Copy"`), an emoji/glyph (`"emoji:✅"`), a web-resource path (`"url:/WebResources/xts_icons/vin.svg"`), or an image data URI. See **[Button and cell icons](#button-and-cell-icons)**. Ignored when `webResourceIcon` is set. |
+| `webResourceIcon` | `string` | no | Dataverse web resource **name** for the icon — e.g. `"xts_/icons/vin.svg"`. Drawn in the button's own text colour, so the artwork must be **monochrome**. Takes precedence over `icon`. See **[Button and cell icons](#button-and-cell-icons)**. |
 | `order` | `number` | no | Position in the custom-button cluster; smaller renders further left. Appended (after existing custom buttons) when omitted. |
 | `disabled` | `boolean` | no | Initial disabled state. Default `false`. |
 | `hidden` | `boolean` | no | Initial hidden state. Default `false`. |
@@ -564,10 +631,16 @@ A `Cell` represents a single column value within a row. Obtained via `row.getCel
 | `getType` | `() → string` | type string | Column type as reported by the PCF framework (e.g., `"SingleLine.Text"`, `"Lookup.Simple"`, `"DateAndTime.DateOnly"`). |
 | `getDisabled` | `() → boolean` | `boolean` | Whether the cell is currently disabled. |
 | `getReadOnly` | `() → boolean` | `boolean` | Whether the cell is currently read-only. |
-| `getRequiredLevel` | `() → boolean` | `boolean` | Whether the cell is required (`true`) or optional (`false`). |
+| `getRequiredLevel` | `() → boolean` | `boolean` | Whether the cell is required (`true`) or optional (`false`). Always a boolean, including before any `setRequiredLevel` call. *(Fixed in v1.5.1 — see the compatibility note below.)* |
 | `getReadOnlyColumns` | `() → string[]` | array | Read-only column names that apply in the row context of this cell. |
 | `getEditableGridId` | `() → string` | `string` | Logical name of the grid control this cell belongs to. |
 | `getOptions` | `() → { text, value }[]` | array | Choices currently offered by an option-set cell (narrowed list if set, else the full metadata list). No-op (`[]`) on a non-option-set cell. See **Option-set choice filtering** below. (since v1.5.0) |
+
+> **`getRequiredLevel` compatibility (v1.5.1).** On v1.5.0 and earlier this returned the **string** `'none'` for a cell whose required level had never been set, and only became a boolean after the first `setRequiredLevel` call. Because `'none'` is a truthy string, `if (cell.getRequiredLevel())` treated **every optional cell as required**. It now returns `false` in that case, as documented.
+>
+> If your script has the defensive workaround `cell.getRequiredLevel() === true || cell.getRequiredLevel() === 'required'`, it keeps working unchanged and can be simplified to `cell.getRequiredLevel()`. If you compared against `'none'` — `cell.getRequiredLevel() === 'none'` — that test never matches on v1.5.1 and must become `!cell.getRequiredLevel()`.
+>
+> The same correction applies to the raw `table` data carried on every event payload: cells there now report `isRequired` as a boolean rather than a level string.
 
 ### Setting state
 
@@ -576,7 +649,7 @@ A `Cell` represents a single column value within a row. Obtained via `row.getCel
 | `setValue` | `(newValue: any) → Promise<any>` | Set the cell's value. See below. |
 | `setDisabled` | `(disabled: boolean) → void` | Enable or disable the cell. Has no effect if the cell is system-disabled. |
 | `setReadOnly` | `(readonly: boolean) → void` | Set the cell's read-only state. Has no effect if the cell is system-disabled. |
-| `setRequiredLevel` | `(level: 'required' \| 'none') → void` | Set whether the cell is required. Values outside `'required'` and `'none'` are ignored. |
+| `setRequiredLevel` | `(level: 'required' \| 'none') → void` | Set whether the cell is required. Values outside `'required'` and `'none'` are ignored. Note the asymmetry with the getter: you **set** a level string but **read** a boolean. |
 | `setReadOnlyColumns` | `(columnNames: string[]) → void` | Set read-only column names in the row context of this cell. |
 | `addOption` | `(value: number, index?: number) → void` | Add a metadata choice to the offered list. No-op on a non-option-set cell. (since v1.5.0) |
 | `removeOption` | `(value: number) → void` | Remove a choice from the offered list. No-op on a non-option-set cell. (since v1.5.0) |
@@ -693,18 +766,30 @@ Rules:
 
 ```js
 cell.setIcon({
-    name: "Warning",        // required — Fluent UI icon name (case-sensitive)
+    name: "Warning",        // icon source — Fluent name, "emoji:...", "url:/WebResources/...", data URI
     color: "#B00020",       // optional — any CSS colour
     size: 16,               // optional — pixel size
     position: "before",     // optional — 'before' | 'after' | 'only' (default 'before')
     tooltip: "Check this"   // optional — hover text on the icon
 });
+
+// ...or ship the artwork in your solution and let it take the cell's text colour:
+cell.setIcon({
+    webResourceIcon: "xts_/icons/vin.svg",   // web resource NAME — monochrome artwork
+    size: 16,
+    tooltip: "VIN verified"
+});
 ```
+
+Supply `name`, `webResourceIcon`, or both — at least one is required. When both are set,
+`webResourceIcon` wins and `name` is not consulted, which makes `name` a useful fallback for
+environments where the icon solution is not installed.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `name` | `string` | — (required) | Fluent UI icon name, e.g. `"Warning"`, `"Info"`, `"Blocked"`, `"CompletedSolid"`, `"Money"`, `"Lock"`. |
-| `color` | `string` | inherits | Icon colour (any CSS colour). |
+| `name` | `string` | — | Icon source: a Fluent UI icon name (`"Warning"`, `"CompletedSolid"`), an emoji/glyph (`"emoji:✅"`), a web-resource path (`"url:/WebResources/xts_icons/vin.svg"`), or an image data URI. See **[Button and cell icons](#button-and-cell-icons)**. Required unless `webResourceIcon` is set; ignored when it is. |
+| `webResourceIcon` | `string` | — | Dataverse web resource **name** for the icon — e.g. `"xts_/icons/vin.svg"`. Drawn in the cell's text colour, so the artwork must be **monochrome**. Takes precedence over `name`. See **[Button and cell icons](#button-and-cell-icons)**. |
+| `color` | `string` | inherits | Icon colour (any CSS colour). Applies to Fluent icons, emoji/glyphs and web-resource icons; ignored for `name` image sources (`url:` / `data:`), which carry their own colours. Omit it and the icon paints in the cell's current text colour, which also means it dims with a read-only cell. |
 | `size` | `number` | inherits | Icon size in pixels (16 matches the grid's own icons). |
 | `position` | `'before' \| 'after' \| 'only'` | `'before'` | `before` = left of the value, `after` = right of the value, `only` = replace the value with just the icon. |
 | `tooltip` | `string` | none | Text shown when hovering the icon. |
@@ -716,9 +801,86 @@ The grid renders icons through Fluent UI 8's icon font, so `name` must be an exa
 1. Alternatively, browse the official list on the **[Fluent UI icons page](https://developer.microsoft.com/en-us/fluentui#/styles/web/icons)**.
 2. Copy the name **verbatim** — `"CompletedSolid"` works, `"completedsolid"` or `"Completed Solid"` does not.
 
-> If the icon doesn't appear, the name is almost always wrong (misspelled, wrong casing, or from a different icon set — Fluent UI *System Icons* / Fabric MDL2 names are not interchangeable with other libraries such as Font Awesome or Material Icons). Verify the name exists in the catalog above; an unknown name renders nothing, it does not error.
+> If the icon doesn't appear, the name is almost always wrong (misspelled, wrong casing, or from a different icon set — Fluent UI *System Icons* / Fabric MDL2 names are not interchangeable with other libraries such as Font Awesome or Material Icons). Verify the name exists in the catalog above. An unrecognised name renders nothing and does not error, and it is never drawn as literal text — so a typo costs you the icon, not the cell.
 
 Common picks: `Info`, `Warning`, `Error`, `Blocked`, `CompletedSolid`, `Lock`, `Money`, `Clock`, `Flag`, `Pinned`.
+
+### Button and cell icons
+
+Command buttons (`addButton`) and cell icons (`cell.setIcon`) accept icons the same way, through the
+same two fields.
+
+**`icon` / `name` — the icon source string.** Four shapes are recognised:
+
+| Value | What it is | Notes |
+|---|---|---|
+| `"Copy"` | Fluent UI icon name | The original behaviour. Depends on the host app having the MDL2 icon set registered. |
+| `"emoji:✅"` / `"glyph:→"` / `"✅"` | An emoji or symbol | No icon font needed. The `emoji:` / `glyph:` prefix is optional for a genuine symbol, and required for an ASCII character. |
+| `"url:/WebResources/xts_icons/vin.svg"` | A web-resource **path** | Rendered as an image, in its own colours. The `url:` prefix is optional. |
+| `"data:image/svg+xml;base64,…"` | An inline image | No extra request. Good for generated artwork. |
+
+**`webResourceIcon` — a web-resource NAME.** Pass the name exactly as it appears in your solution —
+publisher prefix, forward slashes, file extension — **not** a path and **not** a URL:
+
+```js
+webResourceIcon: "xts_/icons/vin.svg"     // correct
+webResourceIcon: "/WebResources/xts_/icons/vin.svg"   // wrong — that is a path
+```
+
+The grid resolves where the resource lives, so one value works in both managed and unmanaged
+deployments.
+
+> **The artwork must be monochrome.** A `webResourceIcon` is drawn in the *text colour of whatever
+> it sits next to* — the button's own label colour, or the cell's text colour. That is what makes it
+> follow hover, pressed, disabled and read-only states with no work on your part, and it is why a
+> single-colour SVG (one shape, no fills of its own) is required. Multi-colour artwork is flattened
+> to that one colour. Use `icon` / `name` with a `url:` path instead if you need the original colours.
+
+The icon is scaled into a fixed **16×16** box (or `size`, when you set one), so artwork of any source
+dimensions leaves command bar height, row height and column width untouched.
+
+**Precedence.** When both fields are supplied, `webResourceIcon` wins and `icon` / `name` is not
+consulted — by *presence*, not by outcome, so what renders never depends on whether an image happened
+to load. That makes the other field a standing fallback for an environment where your icon solution
+is not installed.
+
+**When an icon cannot be drawn** — the web resource does not exist, is not published, or the value is
+not a usable icon source — the grid degrades instead of failing: the **button still renders with its
+label**, the **cell still renders its value** (including `position: "only"`), and a console warning
+names the button or the row/column and the resource it rejected. Check the browser console first if
+an icon is silently missing.
+
+#### Worked example — a web-resource icon on a command button
+
+```js
+grid.addButton({
+  id: "verifyVin",
+  label: "Verify VIN",
+  webResourceIcon: "xts_/icons/vin.svg",   // monochrome SVG shipped in your solution
+  icon: "Search",                          // fallback if that solution is not installed
+  requireSelection: true,
+  onClick: function (instance, ctx) {
+    console.log("verify", ctx.data.selectedRowIds);
+  }
+});
+```
+
+#### Worked example — a web-resource icon in a cell
+
+```js
+grid.addOnLoad(function (instance) {
+  instance.getRows().forEach(function (row) {
+    var verified = row.getCell("xts_vinverified").getValue();
+
+    row.getCell("xts_vin").setIcon({
+      webResourceIcon: verified ? "xts_/icons/vin_ok.svg" : "xts_/icons/vin_warn.svg",
+      size: 16,
+      position: "before",
+      tooltip: verified ? "VIN verified" : "VIN not verified"
+    });
+  });
+});
+```
 
 #### Worked example — styling
 
@@ -775,15 +937,27 @@ const newValue = await cell.setValue(value);
 
 - **Resolves** with the new value on success.
 - **Rejects** with a string beginning with `Validation Error:` when platform validation fails (e.g., a required field constraint or data-type mismatch).
+- **Rejects** with a `YanaGridTimeoutError` when the grid does not acknowledge the update within 6 seconds *(since v1.5.1)*.
 
 ```js
 try {
     await cell.setValue("Active");
 } catch (err) {
-    // err begins with "Validation Error:"
-    console.error(err);
+    if (err && err.name === "YanaGridTimeoutError") {
+        // The grid never acknowledged the update — see "Timeout rejection" below.
+        console.error(err.message, err.operation, err.timeoutMs);
+    } else {
+        // err begins with "Validation Error:"
+        console.error(err);
+    }
 }
 ```
+
+**Timeout rejection (since v1.5.1).** `setValue` needs the grid to apply the change and acknowledge it. That work is done by the cell's on-screen editor, so a cell that is **not currently displayed** has nothing to apply the update and nothing to acknowledge it. The most common case is a row on another page: `getRows()` returns every loaded row, but only the current page is on screen.
+
+After 6 seconds without an acknowledgement the promise rejects with a `YanaGridTimeoutError` carrying `name`, `message`, `operation` (`"setValue"`) and `timeoutMs`. Test with `err.name === "YanaGridTimeoutError"`, not `instanceof` — the bundled SDK and the web resource are separate realms.
+
+> **Behaviour change.** On v1.5.0 and earlier this promise never settled at all: `await cell.setValue(...)` on an off-screen cell hung forever with no error. If you call `setValue` **without** `await` and without a `.catch()`, a timeout now surfaces as an unhandled promise rejection in the browser console. Add a `.catch()` to fire-and-forget calls. Code that awaited such a call could never complete before, so no working script changes behaviour.
 
 **Lookup fields:** the resolved value is the normalized lookup reference returned by the platform — an object `{ id, name, data }` (`id` = record GUID, `name` = display name) — which may differ from the raw value passed in.
 
@@ -957,6 +1131,65 @@ function lockFulfilledRow(grid, rowId) {
 }
 ```
 
+### Worked example — selection-driven button visibility
+
+This example keeps a custom command button in sync with the current row selection: it reads the
+initial selection with `getSelection()` (no notification fires for the initial state), then keeps
+the button updated through `addOnSelectionChange`, re-evaluating the same cached selection whenever
+some other form condition changes. A runnable version of this pattern ships as
+`Technosoft.Yana.GridSelectionExample.js` — a documented sample, not a shipped solution component.
+
+```js
+var lastSelection = { selectedRowIds: [], selectedRows: [] };
+var grid = null;
+
+// Replace with your own rule — this default just requires at least one selected row.
+function isActionable(selectedRows) {
+    return selectedRows.length > 0;
+}
+
+function applyButtonVisibility() {
+    if (!grid) return;
+    grid.setButtonVisible("bulkAction", isActionable(lastSelection.selectedRows));
+}
+
+async function onFormLoad(executionContext) {
+    grid = await window.top.YanaEditableGrid.getEditableGrid(
+        executionContext,
+        "xts_orderlines_grid"
+    );
+    if (!grid) return;
+
+    grid.addOnSelectionChange(onSelectionChange);
+
+    try {
+        lastSelection = await grid.getSelection();
+    } catch (err) {
+        // No selection state to apply — leave lastSelection at its empty default.
+    }
+    applyButtonVisibility();
+}
+
+function onSelectionChange(instance, ctx) {
+    lastSelection = {
+        selectedRowIds: ctx.data.selectedRowIds,
+        selectedRows: ctx.data.selectedRows
+    };
+    applyButtonVisibility();
+}
+
+// Call from wherever your form re-evaluates a condition the predicate depends on
+// (e.g. another field's OnChange) — no new grid call is made.
+function onFormConditionChange() {
+    applyButtonVisibility();
+}
+
+function onFormUnload() {
+    if (grid) grid.removeOnSelectionChange(onSelectionChange);
+    grid = null;
+}
+```
+
 ---
 
 ## Limitations
@@ -966,14 +1199,16 @@ function lockFulfilledRow(grid, rowId) {
 | `getEditableGrid` timeout | 60 seconds. If the grid has not initialized within this window, the Promise resolves with `null`. |
 | `addOnSave` completion timeout | 20 seconds. If the handler does not resolve within 20 seconds, the grid surfaces a `Common.SaveEventTimeout` error dialog and continues. |
 | `row.save()` / `row.delete()` ack timeout | 6 seconds. If the grid does not acknowledge the operation within 6 seconds, the returned Promise rejects with a timeout message. |
+| `getSelection()` ack timeout | 6 seconds. If the grid does not acknowledge the read within 6 seconds, the returned Promise rejects with a `YanaGridTimeoutError` rather than resolving an empty selection. |
 | `addOnRowDelete` cancelability | Not cancelable. It fires *after* removal, so a handler cannot block the delete. The platform confirmation dialog (shown for existing records) is the only pre-delete gate. |
 | Error dialog | Handler exceptions surface via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack trace. |
 | Message protocol | All communication uses JSON-stringified `postMessage` between the form window and the grid iframe. The library abstracts this, but cross-origin restrictions apply when grids are embedded in unusual iframe configurations. |
 | Load order | `Technosoft.Yana.Grid.js` must be listed as a form library before any script that calls `window.top.YanaEditableGrid`. Incorrect load order results in `window.top.YanaEditableGrid` being `undefined`. |
 | Cross-grid events | There is no cross-grid event surface. Each `EditableGrid` instance manages its own event subscriptions independently. |
-| Column availability | `row.getCell(schemaName)` returns `undefined` if the column is not included in the bound view. Ensure required columns are present in the view before calling `getCell`. |
+| Column availability | `row.getCell(schemaName)` returns `undefined` if the column is not included in the bound view, **or if it is in the view but hidden**. Since v1.5.1, the UI and SDK use the same ordered column inventory, so `row.cells` and `getValues()` match what is on screen. A bound column that starts hidden and is explicitly shown at runtime joins both inventories; runtime hide/show remains synchronized. A visible column remains present even when Dataverse reports no data type for it. Ensure required columns are present **and visible** in the view before calling `getCell`. |
 | `setTextFormat` scope | Display-only formatting. Read-only cells show the pattern as static text; editable **date** inputs display the pattern natively; editable **numeric** inputs keep the platform-formatted value. Typed date text is parsed by the platform in the user's locale format. |
-| `setIcon` names | Icon names must exist in the Fluent UI 8 icon set (case-sensitive). An unknown name renders nothing — it does not error. |
+| `setIcon` names | A Fluent icon `name` must exist in the Fluent UI 8 icon set (case-sensitive). An unrecognised value renders nothing — it does not error, and is never drawn as literal text. |
+| `webResourceIcon` | Takes a web resource **name** (`"xts_/icons/vin.svg"`), not a path or URL, and the artwork must be **monochrome** — it is painted in the surrounding text colour. A missing or unpublished resource leaves the label/value intact and logs a console warning. |
 
 ---
 
@@ -991,4 +1226,4 @@ The JS SDK is versioned together with the umbrella solution `CORE Custom Control
 
 ---
 
-> **Bundle metadata** — generated 2026-07-31 from `.public-docs/yanagrid-events.md` for plugin version 1.5.0.
+> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-events.md` for plugin version 1.4.0.
