@@ -4,25 +4,89 @@ Curated, version-by-version change history for YanaGrid. Each entry summarises u
 
 ---
 
-## Unreleased
+## v1.6.1 — September 2026
 
+**Upgrade from:** v1.6.0
 **Solution:** Managed `CORE Custom Control` (`CORECustomControl`)
 
-Adds solution-shipped icons for command buttons and cell icons, plus a wider set of icon sources.
+A maintenance release that makes asynchronous row saves recoverable and keeps the user's work visible when a server response is delayed, rejected, or uncertain. It also corrects choice cells that broke after a save and lookup result lists that would not page past the first set of matches. Existing grid-owned save, paging, and validation behavior remains available, while native form commands continue to follow the host form's own workflow.
+
+### Fixes
+
+- **Validation no longer starts a save event.** Auto-save checks required fields and data types before invoking `addOnSave` or writing to Dataverse. Invalid values stay in the row and appear through cell indicators and an in-grid message; the existing 20-second save-event timeout modal is unchanged.
+- **Background save failures stay visible.** A rejected row keeps its entered values and shows persistent row status plus grid feedback. Users can continue editing another independent row, select **Go to row**, or choose **Retry save**. An unchanged rejection is not retried automatically; editing the row makes it eligible for another automatic attempt.
+- **Uncertain creates are reconciled safely.** When the response to a new-row create is lost, **Check save result** checks the same assigned identity and never replays a blind replacement create. If the result cannot be confirmed, the row remains unresolved with its values available.
+- **Page changes wait for outgoing rows.** Pager, **Add row**, and Tab transitions wait for outgoing rows' validation and save handling. An unresolved outgoing row keeps the grid on its current page with its feedback available. Same-page **Go to row** does not wait for unrelated saves.
+- **Saved rows refresh in place.** After a successful auto-save, the grid reads only that record to show server-generated values without resetting the page or overwriting other pending edits. Auto-save no longer fires the grid-wide `addOnLoad` event.
+- **Choice and list cells survive an auto-save.** A single-choice column could break the grid immediately after a successful auto-save, and Language and Time Zone cells could silently go blank. Values read back after a save now keep the type each column expects, so choice, multi-choice, duration, language, and time-zone cells display correctly. Yes/No columns stay true/false and numeric columns stay numeric.
+- **Load More reaches the next page in filtered lookups.** In a lookup constrained by an XML pre-search, **Load More** returned the first page of matches again instead of advancing, so records beyond the first page were unreachable. Paging now moves through the full result set while keeping the active filter, ordering, and typed-search context. **Load More** is offered only while further matches exist, and a new search restarts at the first page of its own results.
+- **The lookup result list stays open while you scroll it.** Scrolling inside an open lookup's result list dismissed the list. It now stays open, so long result sets can be browsed and paged without reopening the lookup.
+
+### Migration
+
+- Move logic that must run after each successful auto-save from `addOnLoad` to `addOnRowSave`. Keep grid initialization and full-refresh logic in `addOnLoad`; use `addOnNew` for defaults and `addOnChange` for values derived from edits. The `addOnRowSave` callback runs before the background display refresh, so server-generated display values are not guaranteed inside that callback.
+- The grid does not intercept or guarantee host-level workflows that open, close, submit, or confirm a form, including native form **Save & Close**, **Submit**, and **Confirm**. Those commands require a separate host integration contract.
+
+### Validation
+
+- Edit two rows in quick succession while an asynchronous `addOnSave` handler or delayed server response is active; confirm focus and both drafts remain available.
+- Trigger a validation error, a rejected save, and an uncertain create; confirm the in-grid feedback, explicit actions, no blind create replay, and cleanup after success or discard.
+- Move across a page boundary with an outgoing save in progress; confirm the page changes only after that row's validation and save handling settle.
+- Edit a choice column in an auto-saving grid and blur the row; confirm the choice, Language, and Time Zone cells still show their values after the save completes.
+- Open a lookup that is filtered by an XML pre-search and has more matches than one page; click **Load More** twice and confirm each click adds new records, then scroll inside the result list and confirm it stays open.
+
+## v1.6.0 — 7 September 2026
+
+**Upgrade from:** v1.5.1
+**Solution:** Managed `CORE Custom Control` (`CORECustomControl`)
+
+A feature release across three themes: moving data in and out of the grid (row selection with a spreadsheet-ready copy, and an Excel workbook you can edit and import back), grouping and aggregation (subtotals on every group header), and a second round of performance work. It also improves keyboard and screen-reader support, lets implementers use their own icons, adds a supported row-selection event surface, and fixes several save, aggregation, delete, and row-level validation defects. No configuration properties change, and YanaQuickView is unaffected.
 
 ### New features
 
-- **Row-selection events.** `addOnSelectionChange` / `removeOnSelectionChange` notify a form script whenever the grid's effective row selection changes, and `getSelection()` reads the current selection on demand (useful for the initial state, since no notification fires on load). A notification tracks the selected *set*, not the gesture: re-clicking an already-selected row is silent, and so are filtering and an ordinary page change. Sorting is not yet confirmed silent — write your handler so re-running it for an unchanged selection is harmless. See **`addOnSelectionChange` / `removeOnSelectionChange`** in the events reference for the full contract.
-- **Web-resource icons.** `addButton` and `cell.setIcon` accept a new `webResourceIcon` field taking a Dataverse web resource **name** (e.g. `"xts_/icons/vin.svg"`). The artwork must be **monochrome**: it is painted in the text colour beside it, so it follows the button's hover/pressed/disabled state and dims with a read-only cell for free. It renders in a fixed 16×16 box, so any source dimensions leave command bar height, row height and column width untouched, and it takes precedence over `icon` / `name`. See **Button and cell icons** in the events/API reference.
-- **More icon sources.** The existing `icon` (button) and `name` (cell) fields now also accept an emoji or symbol (`"emoji:✅"`, or a bare symbol), a web-resource path (`"url:/WebResources/…"`), and an image data URI — alongside Fluent UI icon names, which are unchanged.
-- **Graceful degradation.** A web resource that does not exist or is not published leaves the button with its label and the cell with its value — including `position: "only"` — and logs a console warning naming the button or row/column and the resource it rejected.
+- **Select rows and copy them to a spreadsheet.** Use the checkbox column at the left of the grid to pick one row, several, or all of them — hold **Shift** and click a second checkbox to take everything in between. Your selection is remembered as you move between pages, so rows picked on page 1 are still selected on page 3 and come out together. Press **Ctrl+C** (**Cmd+C** on a Mac), or use the browser's right-click **Copy**, and paste straight into Excel, Google Sheets, or a text editor: a header row of column names is always included, only the columns you can see are copied in the order they appear on screen, and values arrive the way they look in the grid — formatted dates, choice and Yes/No labels, and lookup names, never internal IDs. With nothing selected, every row currently loaded is copied, not just the page you are looking at. A read-only grid has no checkboxes; **Ctrl+C** there copies all rows. While you are typing in a cell, **Ctrl+C** copies the text inside that cell as usual. If a value contains line breaks they become single spaces so the pasted rows and columns keep their shape — for the exact multi-line text, use **Export to Excel** instead, where each value keeps its own cell.
+- **Row-selection events.** `addOnSelectionChange` / `removeOnSelectionChange` notify a form script whenever the grid's effective row selection changes, and `getSelection()` reads the current selection on demand (including the initial empty state, because no notification fires on load). Notifications track the selected *set*, not the gesture: re-clicking an already-selected row, filtering, an ordinary page change, and sorting that leave the selected set intact are silent. See **`addOnSelectionChange` / `removeOnSelectionChange`** in the events reference for the full contract.
+- **Subtotals on every group header.** With a column grouped, each group heading now shows the same totals configured for the grid footer — count, sum, average, minimum, maximum — calculated over the records in that group only, and respecting whatever filter is active. Editing a value updates its own group's subtotal immediately. Nothing new needs configuring: the group headings reuse the footer's setup, and clearing the grouping leaves the footer totals exactly as before.
+- **Export to Excel, edit, and import back.** **Export to Excel** and **Import from Excel** normally appear in the **More** (…) menu on the grid's command bar. A fully read-only grid hides Import along with its other editing commands; missing privileges or unsaved edits leave it visible but disabled with the reason. The exported workbook has a **Data** sheet holding your rows and an **Instructions** sheet explaining the editing rules and the colour legend, and it carries hidden information that lets a later import match your edits back to the right records — leave hidden rows, columns and sheets in place. Numbers, currency and dates arrive as real Excel cells, so totals and sorting work in the workbook without retyping. Values you cannot change — read-only fields and rows, calculated and rollup fields, formula results, and unsupported field types — appear as grey locked cells for reference and are never imported, even if you edit them.
 
-### Behaviour changes
+  Edit values in the workbook, clear a value by leaving its cell blank, and append rows for new records inside the `YanaData` table. Then choose **Import from Excel**: the grid reads the file, shows you exactly what it proposes to change — updates, new rows, rows it is skipping, and anything it rejected with the workbook row number and the reason — and changes nothing until you confirm. Accepted changes become ordinary unsaved grid edits, so **Save** commits them and **Cancel** discards them, with the usual validation, calculated columns and parent totals all behaving normally. A row that is in the grid but missing from your workbook is never touched and never deleted, and re-importing an unchanged export reports no changes at all.
 
-| Change | Who is affected | Action |
-|--------|-----------------|--------|
-| A cell icon with an explicit `color` now dims on a read-only cell, matching the cell's own text. | Scripts calling `setIcon` with `color` on rows that can become read-only. | None required. Omit `color` if you want the icon to track the cell's text colour in every state. |
-| An unrecognised icon value is never drawn as literal text. | Scripts passing a mistyped Fluent name containing punctuation (`"Save-2"`, `"Warning!"`). | None required — these render no icon, as they always did. Fix the name to get the icon back, or use `"emoji:…"` if you genuinely wanted the character. |
+  Import is unavailable when the grid is read-only, when you cannot create or update the records concerned, or while the grid has unsaved edits — save or cancel first. A lookup whose name you changed is only applied when exactly one matching record exists; otherwise that row is rejected rather than guessed. If a record was changed by someone else after you exported, that row is reported as out of date and never applied; there is no per-row or bulk override. Export again, re-apply the edit to the fresh workbook, and import it against the current data. The grid checks the accepted set again immediately before saving so a newer value is never overwritten silently.
+- **Your own icons on grid buttons and cells (implementers).** A custom command button, or a cell styled through the JavaScript SDK, can now take its icon from a Dataverse web resource instead of being limited to the built-in Fluent icon set — so a grid button can carry the same icon as the ribbon button above it, and a domain concept with no built-in glyph can have a proper one. Supply the web resource name and the grid resolves the rest; the same name works for managed and unmanaged deployments. The icon is drawn in the colour of the surrounding text, so it dims with a disabled button and follows an explicit cell text colour, which means artwork must be **monochrome SVG**. A fixed icon box keeps command-bar height, row height and column width unchanged whatever the source dimensions. If the named resource is missing or cannot be drawn this way, the button keeps its label and the cell keeps its value, and a message names what was rejected. Existing buttons and cells using a built-in icon name, or no icon, are unaffected. See `yanagrid-events.md`.
+
+### Changes
+
+- **Adding a row now requires clearing the search first.** A new row starts empty, so it never matched an active search term — the row was created but stayed invisible and uncounted, which looked like nothing had happened. While a search term is active, clicking an empty grid or the empty-state text no longer adds a row, and the **Add row** command is disabled with a tooltip telling you to clear the search. Clear it and the command is available again immediately. The empty state now tells you which situation you are in: a genuinely empty grid keeps its clickable "add a new row" prompt, while a search that matches nothing shows **No records match your search** as plain text. Separately, if the number of rows shrinks below the page you are on — you deleted the last page's rows, or a search narrowed the results — the grid moves you to the last valid page instead of showing an empty one, with the record counts kept consistent.
+- **Cell tooltips show the label, not the raw value.** Immediately after an edit, the tooltip on a lookup cell showed `[object Object]` instead of the record you had just chosen, and a changed choice cell showed the underlying number instead of its label — both corrected themselves only after a save and refresh. Tooltips now show the same text the cell displays from the moment you make the edit, for lookups, choices, multi-select choices, Yes/No and duration columns alike. Clearing a cell leaves an empty tooltip rather than placeholder text. What is stored, validated and saved is unchanged.
+- **Faster record open.** A second round of data-loading work cut the requests the grid makes when a record opens by roughly a third, and the time spent fetching field information by about a quarter, with no change to what the grid does or displays.
+- **Faster grouping.** Applying a grouping is about a fifth faster, and editing a cell while grouped about a fifth faster again, because groups that have not changed are now reused instead of rebuilt. Grouping setup, ordering, expanded and collapsed state, subtotals and paging behave exactly as before.
+- **Lookup and number editors tidied up.** In the lookup editor the search icon no longer sits shorter than the box it belongs to, and a whole-number column no longer fails to render in certain configurations. Nothing about how you enter or store values changes.
+- **Better keyboard and screen-reader support.** Focus now moves predictably through the common flows — entering and leaving a cell, adding a row, opening a lookup, and after a save — and cell roles, headers, editable state, validation errors and selection state are exposed to screen readers where that did not require rebuilding the grid's structure. Focus outlines are visible when navigating by keyboard. Mouse interaction is unchanged. Some deeper accessibility items need structural work and are not in this release.
+
+### Fixes
+
+- **Concurrent auto-saves could interfere with each other.** When two rows started saving close together, one row's asynchronous pre-save handler could release the other row's wait. Handler-written values could then miss the intended save, while repeated triggers could issue overlapping updates or duplicate creates. Each row now waits for its own handler, and repeated triggers for the same row share the save already in progress. No consumer script or API signature changes.
+- **Footer totals only caught up after saving.** With paging turned on, editing a value left the totals along the bottom of the grid showing the old figures until you saved — and currency columns were affected while plain number columns updated correctly, which made it look inconsistent rather than broken. Totals now update as you type, for every numeric and currency column, and for rows you have just added.
+- **A group with no values dropped its subtotal.** When every record in a group left a numeric column empty, that group's heading omitted the average, minimum or maximum for that column entirely, while the footer still showed a value — so the heading and the footer offered different sets of columns and you could not tell whether something was misconfigured or simply empty. Group headings now show the same set of columns as the footer, with the same value for an empty group. Groups that do contain values, and the footer itself, are unaffected; blank cells still do not count as zero.
+- **A loading indicator ran behind the delete confirmation.** Selecting records and clicking **Delete** showed the confirmation dialog with a loading indicator spinning behind it, suggesting the deletion was already underway before you had confirmed. Only the confirmation is shown now. Deleting, cancelling and the refresh afterwards are unchanged, and the loading indicator still appears normally when the grid loads, pages, saves or refreshes.
+- **Turning off "required" for a single row had no visible effect.** On a form whose script decides which columns apply to the row you are editing, marking a column as not required for that row correctly greyed out the cell but left the red required indicator showing — including on cells that were disabled. The indicator now follows the per-row setting, matching the rule the save check was already applying, so a cell that is not required for this row no longer looks required.
+
+### Deployment
+
+Ships in the managed **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse solution, preserving production/base identity. Import the managed solution zip (`CORECustomControl_<version>_managed.zip`) — see `yanagrid-install.md`.
+
+### Validation
+
+- Select rows across two pages, press **Ctrl+C**, and paste into Excel — a header row plus exactly those rows, with labels rather than IDs.
+- With an asynchronous `addOnSave` handler, leave two edited rows in quick succession and confirm each row includes its own handler-written values and produces only one create or update.
+- Group by a column with a numeric average configured, and confirm every group heading shows the same set of totals as the footer, including a group whose values are all empty.
+- Export to Excel, change nothing, and import the file back — the review must report no changes. Then change one value, import, confirm, and check that **Save** commits it and **Cancel** discards it.
+- Type a search term that matches nothing and confirm **No records match your search** appears, that clicking the grid adds no row, and that **Add row** is disabled with its tooltip.
+- Select a lookup value on a new row and hover the cell — the tooltip must show the record name, not `[object Object]`.
+
+### Property changes
+
+- _None._ Export and Import are always present in the export menu and are not controlled by a property. The web-resource icon is a JavaScript SDK field, not a control property.
 
 ---
 
@@ -31,7 +95,7 @@ Adds solution-shipped icons for command buttons and cell icons, plus a wider set
 **Upgrade from:** v1.5.0
 **Solution:** Managed `CORE Custom Control` (`CORECustomControl`)
 
-A bugfix release correcting three defects in the JavaScript SDK contract. All three are long-standing — they behave the same way on v1.4.x — and were found by the SDK regression pass for v1.5.0. No configuration properties change, and YanaQuickView is unaffected.
+A hotfix release covering the JavaScript SDK contract, footer totals, column alignment, required-field validation, and filtering with grouping. The SDK defects below are long-standing — they behave the same way on v1.4.x — and were found by the SDK regression pass for v1.5.0. No configuration properties change, and YanaQuickView is unaffected.
 
 ### Fixes
 
@@ -39,6 +103,10 @@ A bugfix release correcting three defects in the JavaScript SDK contract. All th
 - **The SDK listed cells the grid does not display.** `row.cells` included hidden columns, which have no on-screen editor. Reading them was misleading, and writing to one never completed. The UI and SDK now use the same ordered column inventory. A bound column that starts hidden and is explicitly shown at runtime joins both inventories; runtime hide/show remains synchronized. A visible column remains present even when Dataverse reports no data type for it.
 - **`setValue` could hang forever.** A `setValue` the grid never acknowledged left the promise pending with no error. It now rejects after 6 seconds with a `YanaGridTimeoutError`.
 - **`getRequiredLevel()` reported optional cells as required.** It returned the string `'none'` — which is truthy — for a cell whose required level had never been set, so `if (cell.getRequiredLevel())` was true for every optional cell. It now returns `false`, and is a boolean in every state.
+- **Footer minimum and maximum totals showed the wrong value.** When a column had more than one footer aggregate function configured (for example minimum, maximum, and average on the same numeric column), the minimum and maximum totals in the footer displayed the value of whichever function was configured last on that column, instead of their own. Each footer aggregate function now shows its own correct value. Per-group minimum/maximum totals were not affected.
+- **Numeric and currency columns were left-aligned when read-only.** A numeric or currency column lined up on the right while editable but shifted to the left once the cell became read-only. These columns now stay right-aligned regardless of editable or read-only state; every other column type continues to align left in both states.
+- **A required column no longer rejects a genuine `0` or "No" value.** Saving a row was blocked with a "required fields must be filled" message even when a required numeric column held `0` or a required Yes/No column was set to "No" — both are real values, not blanks. Saving now succeeds whether you commit one row at a time or several at once, and only a truly empty cell still blocks the save. This applies consistently across all column types and to the inline required indicator as well as the save check. A new row also starts a required Yes/No or choice column with its normal default value instead of showing "No" while still being flagged as missing.
+- **Filtering to no results with grouping on showed every record anyway.** When a keyword filter matched no rows and a column was grouped, the grid ignored the filter and displayed all records with a "No data available" watermark instead of showing no rows. Clicking the "Click here to add a new row" prompt while a filter was active also added a row you could not see or type into, because the active filter hid it; and clicking it on a genuinely empty (unfiltered) grid could add two blank rows instead of one. Grouping now respects an active filter that matches nothing, the add-a-row prompt no longer appears while a filter is active, and it adds exactly one row when the grid is genuinely empty.
 
 ### Upgrade guidance
 
@@ -51,8 +119,9 @@ A bugfix release correcting three defects in the JavaScript SDK contract. All th
 | `cell.getRequiredLevel() === 'none'` | **Change required.** This never matches on v1.5.1. Use `!cell.getRequiredLevel()`. |
 | Reading `isRequired` from the raw `table` in an event payload | Expect a boolean rather than `'required'` / `'none'`. |
 | Iterating `row.cells` and relying on hidden columns being present | **Review.** Hidden columns are no longer listed. Make the column visible in the bound view if your script needs it. |
+| Relying on `0` or "No" in a required column to block the save | **Review.** `0` and "No" now count as filled values, and the row saves. If a non-zero (or "Yes") value was actually required, express that as an explicit business rule. |
 | Registered `Technosoft.Yana.Grid.js` as a form library | No action. It delegates to the bundled SDK, so it picks up all of the above automatically. |
-| Not using the JavaScript SDK | No action required. |
+| Not using the JavaScript SDK | No action required for the SDK changes above. |
 
 ---
 
@@ -315,6 +384,8 @@ Ships in the **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse so
 
 | From → To | Action |
 |-----------|--------|
+| any → v1.6.0 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.5.1; no configuration properties change. Review the **Changes** list under v1.6.0 above if you add rows while a search is active, if a script reads a cell's display text after an edit, or if a script clears "required" per row. |
+| any → v1.5.1 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.5.0; no configuration properties change. Review the **Upgrade guidance** table under v1.5.1 above if you use the JavaScript SDK, or if a required column relies on `0` or "No" being treated as empty. |
 | any → v1.5.0 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). `defaultPageSize` is removed; `enableGroupBy` is retained (hidden, not removed) — see **Property changes** and **Upgrade guidance** under v1.5.0 above. New `gridEvent` output property needs no action. |
 | any → v1.4.5 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.4.4. |
 | any → v1.4.4 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.4.3. |
@@ -336,4 +407,4 @@ Ships in the **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse so
 
 ---
 
-> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-releases.md` for plugin version 1.4.0.
+> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-releases.md` for plugin version 1.6.1.

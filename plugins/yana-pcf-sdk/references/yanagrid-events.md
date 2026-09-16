@@ -130,6 +130,10 @@ grid.removeOnLoad(handler);
 
 **Trigger:** fires each time the grid finishes loading or refreshing its data from Dataverse.
 
+Since **v1.6.1**, auto-saving a row does not fire `addOnLoad`. The background read of that saved record is not a grid refresh. Manual Save retains its existing grid refresh behavior.
+
+**Migration:** move logic that must run after each successful auto-save from `addOnLoad` to `addOnRowSave`. Use `ctx.data.row` to apply the logic to the saved row; keep grid initialization and full-refresh logic in `addOnLoad`. Use `addOnNew` for new-row defaults and `addOnChange` for values derived from edits. This is a breaking event-scope change for auto-save; the existing 20-second `addOnSave` timeout modal is unchanged.
+
 **`eventContext.data` shape:**
 
 | Property | Present | Description |
@@ -241,7 +245,7 @@ grid.addOnSave(handler);
 grid.removeOnSave(handler);
 ```
 
-**Trigger:** fires when a row is about to be saved. The handler runs before the save is confirmed as complete in the grid UI.
+**Trigger (since v1.6.1):** fires after validation passes and before the write on auto-save and the grid's Save flow. An invalid row does not invoke the handler. Programmatic `row.save()` validates and saves the row without invoking `addOnSave`.
 
 **`eventContext.data` shape:**
 
@@ -252,7 +256,11 @@ grid.removeOnSave(handler);
 | `row` | yes | The `Row` being saved. |
 | `cell` | no | — |
 
-**Completion semantics:** the grid waits up to **20 seconds** for the handler to complete (await resolution). After the handler finishes — whether it resolves or throws — the grid resumes the save lifecycle. If the handler throws, the grid surfaces an error dialog via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack, then continues. If the handler does not complete within 20 seconds, the grid surfaces a `Common.SaveEventTimeout` error dialog and continues.
+**Completion semantics:** the grid waits up to **20 seconds** for the handler to complete (await resolution). After the handler finishes — whether it resolves or throws — the grid resumes the save lifecycle. If the handler throws, the grid surfaces an error dialog via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack, then continues. If the handler does not complete within 20 seconds, the grid surfaces a `Common.SaveEventTimeout` error dialog and stops that save attempt; edits remain available for retry.
+
+Required defaults must already exist before this event. Populate new-row defaults in `addOnNew`, and derive dependent values in `addOnChange`; `addOnSave` cannot fill a required field to rescue a row that failed validation.
+
+**Concurrent saves (since v1.6.0):** each row waits for its own handler invocation. One row's handler finishing cannot release another row's save, and repeated triggers for the same row reuse its in-flight save instead of issuing parallel creates or updates. Values written by an asynchronous handler are included in the row that invoked it.
 
 > Throwing from an `addOnSave` handler does not prevent the record from saving. It surfaces an error dialog and then save proceeds. To perform async validation before save, use `cell.setNotification()` from an `addOnChange` handler to surface field-level messages before the save is attempted.
 
@@ -265,7 +273,7 @@ grid.addOnRowSave(handler);
 grid.removeOnRowSave(handler);
 ```
 
-**Trigger:** fires **once after a single row has been committed to Dataverse** — whether through auto-save, the **Save** button, or a programmatic `row.save()`. This is distinct from `addOnSave`, which fires *before* the save and blocks the lifecycle. `addOnRowSave` fires *after* the write succeeds, so the row already holds its persisted state.
+**Trigger (since v1.6.1):** fires **once after a single row has been committed to Dataverse** — whether through auto-save, the **Save** button, or a programmatic `row.save()`. This is distinct from `addOnSave`, which fires *before* the write. The event contains the saved row and its resolved record id. Auto-save refreshes server-generated display values asynchronously afterward; those values are not guaranteed to be available inside this callback.
 
 **Create vs. update:** the handler can tell whether the save **created** a brand-new record or **updated** an existing one via `row.isNew()`:
 
@@ -386,10 +394,9 @@ selection, drive a bulk-action panel, log a selection audit trail.
 >   hasn't re-fetched it yet) reports the change if that row was selected; a page change that leaves
 >   the selected set intact reports nothing. Do not assume paging is unconditionally silent.
 >
->   Filtering is confirmed silent, as is an ordinary page change. **Sorting is not yet confirmed:**
->   testing has observed a notification after a column sort, so treat a sort as *possibly* emitting
->   and make your handler idempotent — re-applying your own logic for an unchanged selection should
->   be harmless anyway, which is the safe way to write one of these handlers regardless.
+>   Filtering, an ordinary page change, and sorting are silent when they leave the selected set
+>   intact. Write handlers to be idempotent anyway, because any later operation that changes the
+>   selected set is reported.
 > - **No notification on load.** A fresh or reloaded grid starts with an empty selection and does
 >   not announce it — read the initial state with `getSelection()` instead (see **Grid state**
 >   below).
@@ -481,8 +488,8 @@ A consumer web resource or form script can register its own buttons in the grid'
 |----------|------|----------|-------------|
 | `id` | `string` | yes | Unique per grid — the key used by `removeButton`, `setButtonDisabled`, `setButtonVisible`, and click routing. |
 | `label` | `string` | yes | Visible button text. |
-| `icon` | `string` | no | Icon source. A Fluent UI icon **name** (`"Copy"`), an emoji/glyph (`"emoji:✅"`), a web-resource path (`"url:/WebResources/xts_icons/vin.svg"`), or an image data URI. See **[Button and cell icons](#button-and-cell-icons)**. Ignored when `webResourceIcon` is set. |
-| `webResourceIcon` | `string` | no | Dataverse web resource **name** for the icon — e.g. `"xts_/icons/vin.svg"`. Drawn in the button's own text colour, so the artwork must be **monochrome**. Takes precedence over `icon`. See **[Button and cell icons](#button-and-cell-icons)**. |
+| `icon` | `string` | no | Fluent UI icon **name** (e.g. `"Copy"`), not a URL. |
+| `webResourceIcon` | `string` | no | *Since v1.6.0.* Name of a Dataverse web resource holding a **monochrome SVG**, e.g. `"xts_/icons/service_template.svg"` — a name, not a URL or path. The grid resolves the location, so the same value works for managed and unmanaged deployments. See **Web-resource icons** below. |
 | `order` | `number` | no | Position in the custom-button cluster; smaller renders further left. Appended (after existing custom buttons) when omitted. |
 | `disabled` | `boolean` | no | Initial disabled state. Default `false`. |
 | `hidden` | `boolean` | no | Initial hidden state. Default `false`. |
@@ -766,30 +773,19 @@ Rules:
 
 ```js
 cell.setIcon({
-    name: "Warning",        // icon source — Fluent name, "emoji:...", "url:/WebResources/...", data URI
+    name: "Warning",        // required — Fluent UI icon name (case-sensitive)
     color: "#B00020",       // optional — any CSS colour
     size: 16,               // optional — pixel size
     position: "before",     // optional — 'before' | 'after' | 'only' (default 'before')
     tooltip: "Check this"   // optional — hover text on the icon
 });
-
-// ...or ship the artwork in your solution and let it take the cell's text colour:
-cell.setIcon({
-    webResourceIcon: "xts_/icons/vin.svg",   // web resource NAME — monochrome artwork
-    size: 16,
-    tooltip: "VIN verified"
-});
 ```
-
-Supply `name`, `webResourceIcon`, or both — at least one is required. When both are set,
-`webResourceIcon` wins and `name` is not consulted, which makes `name` a useful fallback for
-environments where the icon solution is not installed.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `name` | `string` | — | Icon source: a Fluent UI icon name (`"Warning"`, `"CompletedSolid"`), an emoji/glyph (`"emoji:✅"`), a web-resource path (`"url:/WebResources/xts_icons/vin.svg"`), or an image data URI. See **[Button and cell icons](#button-and-cell-icons)**. Required unless `webResourceIcon` is set; ignored when it is. |
-| `webResourceIcon` | `string` | — | Dataverse web resource **name** for the icon — e.g. `"xts_/icons/vin.svg"`. Drawn in the cell's text colour, so the artwork must be **monochrome**. Takes precedence over `name`. See **[Button and cell icons](#button-and-cell-icons)**. |
-| `color` | `string` | inherits | Icon colour (any CSS colour). Applies to Fluent icons, emoji/glyphs and web-resource icons; ignored for `name` image sources (`url:` / `data:`), which carry their own colours. Omit it and the icon paints in the cell's current text colour, which also means it dims with a read-only cell. |
+| `name` | `string` | — (required unless `webResourceIcon` is given) | Fluent UI icon name, e.g. `"Warning"`, `"Info"`, `"Blocked"`, `"CompletedSolid"`, `"Money"`, `"Lock"`. |
+| `webResourceIcon` | `string` | none | *Since v1.6.0.* Name of a Dataverse web resource holding a **monochrome SVG**. See **Web-resource icons** below. |
+| `color` | `string` | inherits | Icon colour (any CSS colour). |
 | `size` | `number` | inherits | Icon size in pixels (16 matches the grid's own icons). |
 | `position` | `'before' \| 'after' \| 'only'` | `'before'` | `before` = left of the value, `after` = right of the value, `only` = replace the value with just the icon. |
 | `tooltip` | `string` | none | Text shown when hovering the icon. |
@@ -801,86 +797,43 @@ The grid renders icons through Fluent UI 8's icon font, so `name` must be an exa
 1. Alternatively, browse the official list on the **[Fluent UI icons page](https://developer.microsoft.com/en-us/fluentui#/styles/web/icons)**.
 2. Copy the name **verbatim** — `"CompletedSolid"` works, `"completedsolid"` or `"Completed Solid"` does not.
 
-> If the icon doesn't appear, the name is almost always wrong (misspelled, wrong casing, or from a different icon set — Fluent UI *System Icons* / Fabric MDL2 names are not interchangeable with other libraries such as Font Awesome or Material Icons). Verify the name exists in the catalog above. An unrecognised name renders nothing and does not error, and it is never drawn as literal text — so a typo costs you the icon, not the cell.
+> If the icon doesn't appear, the name is almost always wrong (misspelled, wrong casing, or from a different icon set — Fluent UI *System Icons* / Fabric MDL2 names are not interchangeable with other libraries such as Font Awesome or Material Icons). Verify the name exists in the catalog above; an unknown name renders nothing, it does not error.
+
+#### Web-resource icons
+
+*Since v1.6.0.* When the Fluent set has no glyph for what you need — or you already hold the icon as a web resource and use it on the native command bar — supply `webResourceIcon` instead of (or alongside) the Fluent icon name. It is available on **both** surfaces: `addButton` for custom command buttons, and the `setIcon` descriptor for cells.
+
+```js
+// Custom command button
+grid.addButton({
+    id: "addServiceTemplate",
+    label: "Add service template",
+    webResourceIcon: "xts_/icons/service_template.svg",
+    requireSelection: true,
+    onClick: ctx => { /* ... */ }
+});
+
+// Cell icon
+cell.setIcon({
+    webResourceIcon: "xts_/icons/flagged.svg",
+    position: "after",
+    tooltip: "Flagged for review"
+});
+```
+
+Rules, on both surfaces:
+
+- **Name, not a path.** Pass the web resource's name exactly as it appears in Dataverse. The grid resolves the URL itself, so your script carries no hard-coded path and the same name works for managed and unmanaged deployments of the solution.
+- **Monochrome SVG only.** The icon is drawn in the colour of the surrounding text so it follows hover, pressed and disabled states like a built-in icon — a button disabled through `setButtonDisabled` dims its icon with its label, and a cell given a `color` renders its icon in that colour. Multi-colour artwork cannot behave that way and is rejected with a message rather than rendered.
+- **Fixed icon box.** Source artwork dimensions cannot change command-bar height, row height or column width.
+- **Precedence is by presence, not outcome.** A usable `webResourceIcon` wins outright; `icon` / `name` is reached only when `webResourceIcon` is absent or rejected. Supplying both is a legitimate way to specify a Fluent fallback.
+- **Failure leaves a usable surface.** A missing web resource, or artwork that cannot be drawn in the surrounding text colour, leaves the button showing its label and the cell showing its value, and raises a message naming the button or column and the rejected resource — never an empty icon slot.
+- Every existing `setIcon` option still applies, including `position` and `tooltip`, and `clearStyle` removes a web-resource icon exactly as it removes a Fluent one.
+- A repeated resource is resolved once rather than per cell, so applying the same icon down a long column costs no more while scrolling, grouping or paging.
+
+Consumers supplying a Fluent icon name, or no icon at all, are unaffected — this is purely additive to the v1.5.0 custom-button contract.
 
 Common picks: `Info`, `Warning`, `Error`, `Blocked`, `CompletedSolid`, `Lock`, `Money`, `Clock`, `Flag`, `Pinned`.
-
-### Button and cell icons
-
-Command buttons (`addButton`) and cell icons (`cell.setIcon`) accept icons the same way, through the
-same two fields.
-
-**`icon` / `name` — the icon source string.** Four shapes are recognised:
-
-| Value | What it is | Notes |
-|---|---|---|
-| `"Copy"` | Fluent UI icon name | The original behaviour. Depends on the host app having the MDL2 icon set registered. |
-| `"emoji:✅"` / `"glyph:→"` / `"✅"` | An emoji or symbol | No icon font needed. The `emoji:` / `glyph:` prefix is optional for a genuine symbol, and required for an ASCII character. |
-| `"url:/WebResources/xts_icons/vin.svg"` | A web-resource **path** | Rendered as an image, in its own colours. The `url:` prefix is optional. |
-| `"data:image/svg+xml;base64,…"` | An inline image | No extra request. Good for generated artwork. |
-
-**`webResourceIcon` — a web-resource NAME.** Pass the name exactly as it appears in your solution —
-publisher prefix, forward slashes, file extension — **not** a path and **not** a URL:
-
-```js
-webResourceIcon: "xts_/icons/vin.svg"     // correct
-webResourceIcon: "/WebResources/xts_/icons/vin.svg"   // wrong — that is a path
-```
-
-The grid resolves where the resource lives, so one value works in both managed and unmanaged
-deployments.
-
-> **The artwork must be monochrome.** A `webResourceIcon` is drawn in the *text colour of whatever
-> it sits next to* — the button's own label colour, or the cell's text colour. That is what makes it
-> follow hover, pressed, disabled and read-only states with no work on your part, and it is why a
-> single-colour SVG (one shape, no fills of its own) is required. Multi-colour artwork is flattened
-> to that one colour. Use `icon` / `name` with a `url:` path instead if you need the original colours.
-
-The icon is scaled into a fixed **16×16** box (or `size`, when you set one), so artwork of any source
-dimensions leaves command bar height, row height and column width untouched.
-
-**Precedence.** When both fields are supplied, `webResourceIcon` wins and `icon` / `name` is not
-consulted — by *presence*, not by outcome, so what renders never depends on whether an image happened
-to load. That makes the other field a standing fallback for an environment where your icon solution
-is not installed.
-
-**When an icon cannot be drawn** — the web resource does not exist, is not published, or the value is
-not a usable icon source — the grid degrades instead of failing: the **button still renders with its
-label**, the **cell still renders its value** (including `position: "only"`), and a console warning
-names the button or the row/column and the resource it rejected. Check the browser console first if
-an icon is silently missing.
-
-#### Worked example — a web-resource icon on a command button
-
-```js
-grid.addButton({
-  id: "verifyVin",
-  label: "Verify VIN",
-  webResourceIcon: "xts_/icons/vin.svg",   // monochrome SVG shipped in your solution
-  icon: "Search",                          // fallback if that solution is not installed
-  requireSelection: true,
-  onClick: function (instance, ctx) {
-    console.log("verify", ctx.data.selectedRowIds);
-  }
-});
-```
-
-#### Worked example — a web-resource icon in a cell
-
-```js
-grid.addOnLoad(function (instance) {
-  instance.getRows().forEach(function (row) {
-    var verified = row.getCell("xts_vinverified").getValue();
-
-    row.getCell("xts_vin").setIcon({
-      webResourceIcon: verified ? "xts_/icons/vin_ok.svg" : "xts_/icons/vin_warn.svg",
-      size: 16,
-      position: "before",
-      tooltip: verified ? "VIN verified" : "VIN not verified"
-    });
-  });
-});
-```
 
 #### Worked example — styling
 
@@ -1133,7 +1086,8 @@ function lockFulfilledRow(grid, rowId) {
 
 ### Worked example — selection-driven button visibility
 
-This example keeps a custom command button in sync with the current row selection: it reads the
+This example resolves the grid, then creates a custom command button with `addButton` before it
+subscribes or reads the initial selection. It then keeps the button in sync with the current row selection: it reads the
 initial selection with `getSelection()` (no notification fires for the initial state), then keeps
 the button updated through `addOnSelectionChange`, re-evaluating the same cached selection whenever
 some other form condition changes. A runnable version of this pattern ships as
@@ -1160,12 +1114,13 @@ async function onFormLoad(executionContext) {
     );
     if (!grid) return;
 
+    grid.addButton({ id: "bulkAction", label: "Bulk action", icon: "Play", order: 10, hidden: true });
     grid.addOnSelectionChange(onSelectionChange);
 
     try {
         lastSelection = await grid.getSelection();
     } catch (err) {
-        // No selection state to apply — leave lastSelection at its empty default.
+        // A read can reject after its 6-second acknowledgement timeout. Leave the empty default.
     }
     applyButtonVisibility();
 }
@@ -1190,6 +1145,12 @@ function onFormUnload() {
 }
 ```
 
+Configure the runnable sample's `controlName` and predicate, then create its button after resolving
+the grid and before calling its `onLoad`. Call
+`onFormConditionChange` only when the form-owned condition used by that predicate changes, and call
+`onUnload` during form cleanup to detach the selection handler. The initial `getSelection()` read
+retains its 6-second acknowledgement timeout.
+
 ---
 
 ## Limitations
@@ -1197,7 +1158,7 @@ function onFormUnload() {
 | Limitation | Detail |
 |-----------|--------|
 | `getEditableGrid` timeout | 60 seconds. If the grid has not initialized within this window, the Promise resolves with `null`. |
-| `addOnSave` completion timeout | 20 seconds. If the handler does not resolve within 20 seconds, the grid surfaces a `Common.SaveEventTimeout` error dialog and continues. |
+| `addOnSave` completion timeout | 20 seconds. Since v1.6.1, if the handler does not complete within 20 seconds, the grid surfaces a `Common.SaveEventTimeout` error dialog and stops that save attempt. Edits remain available for retry. |
 | `row.save()` / `row.delete()` ack timeout | 6 seconds. If the grid does not acknowledge the operation within 6 seconds, the returned Promise rejects with a timeout message. |
 | `getSelection()` ack timeout | 6 seconds. If the grid does not acknowledge the read within 6 seconds, the returned Promise rejects with a `YanaGridTimeoutError` rather than resolving an empty selection. |
 | `addOnRowDelete` cancelability | Not cancelable. It fires *after* removal, so a handler cannot block the delete. The platform confirmation dialog (shown for existing records) is the only pre-delete gate. |
@@ -1205,10 +1166,11 @@ function onFormUnload() {
 | Message protocol | All communication uses JSON-stringified `postMessage` between the form window and the grid iframe. The library abstracts this, but cross-origin restrictions apply when grids are embedded in unusual iframe configurations. |
 | Load order | `Technosoft.Yana.Grid.js` must be listed as a form library before any script that calls `window.top.YanaEditableGrid`. Incorrect load order results in `window.top.YanaEditableGrid` being `undefined`. |
 | Cross-grid events | There is no cross-grid event surface. Each `EditableGrid` instance manages its own event subscriptions independently. |
+| Native form workflows | The grid does not intercept or guarantee host-level workflows that open, close, submit, or confirm a form, including **Save & Close**, **Submit**, and **Confirm**. |
 | Column availability | `row.getCell(schemaName)` returns `undefined` if the column is not included in the bound view, **or if it is in the view but hidden**. Since v1.5.1, the UI and SDK use the same ordered column inventory, so `row.cells` and `getValues()` match what is on screen. A bound column that starts hidden and is explicitly shown at runtime joins both inventories; runtime hide/show remains synchronized. A visible column remains present even when Dataverse reports no data type for it. Ensure required columns are present **and visible** in the view before calling `getCell`. |
 | `setTextFormat` scope | Display-only formatting. Read-only cells show the pattern as static text; editable **date** inputs display the pattern natively; editable **numeric** inputs keep the platform-formatted value. Typed date text is parsed by the platform in the user's locale format. |
-| `setIcon` names | A Fluent icon `name` must exist in the Fluent UI 8 icon set (case-sensitive). An unrecognised value renders nothing — it does not error, and is never drawn as literal text. |
-| `webResourceIcon` | Takes a web resource **name** (`"xts_/icons/vin.svg"`), not a path or URL, and the artwork must be **monochrome** — it is painted in the surrounding text colour. A missing or unpublished resource leaves the label/value intact and logs a console warning. |
+| `setIcon` names | Icon names must exist in the Fluent UI 8 icon set (case-sensitive). An unknown name renders nothing — it does not error. |
+| Web-resource icons | Since v1.6.0, `webResourceIcon` accepts a Dataverse web resource name holding a **monochrome** SVG. Multi-colour artwork is rejected, as are custom icon fonts. A missing or unusable resource falls back to the button label or cell value and raises a message; it does not throw. |
 
 ---
 
@@ -1226,4 +1188,4 @@ The JS SDK is versioned together with the umbrella solution `CORE Custom Control
 
 ---
 
-> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-events.md` for plugin version 1.4.0.
+> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-events.md` for plugin version 1.6.1.

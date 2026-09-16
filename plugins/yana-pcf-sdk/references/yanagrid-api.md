@@ -4,7 +4,7 @@ YanaGrid is a virtual PCF dataset control for Microsoft Power Apps model-driven 
 
 This document is the **public API surface**. It describes the manifest properties an implementer configures and the runtime behavior contracts an integrator can rely on. It does **not** describe internal implementation, source layout, or extension points beyond the published manifest.
 
-**Document scope:** YanaGrid v1.5.0 (ships in umbrella solution `CORE Custom Control`).
+**Document scope:** YanaGrid v1.6.1 (ships in umbrella solution `CORE Custom Control`).
 
 ---
 
@@ -101,7 +101,7 @@ this.Xts_UnitPrice_OnChange = async function (that, context) {
 
 `Technosoft.Yana.Grid.js` still ships for backward compatibility, but since v1.5.0 its body is a thin shim that delegates to the bundled SDK (same `getEditableGrid(context, gridId)` signature, same 60-second wait-for-ready timeout, console-only deprecation notice). Existing forms that register it as a form library keep working unchanged, **but the shim requires a YanaGrid control ≥ 1.5.0 on the form**. New consumers should not register it. It will be removed in a future major version.
 
-Since **v1.6.0** the bundled SDK also reports row-selection changes — `addOnSelectionChange` / `removeOnSelectionChange` and the on-demand `getSelection()` read — with no manifest configuration required.
+**Since v1.6.0:** the bundled SDK reports row-selection changes through `addOnSelectionChange` / `removeOnSelectionChange`, and exposes the on-demand `getSelection()` read, with no manifest configuration required.
 
 See `yanagrid-events.md` for the full JS SDK reference.
 
@@ -148,15 +148,18 @@ Renders an aggregate row at the bottom of the grid for the listed columns.
 - **Format**: comma-separated. Each entry is `columnLogicalName` or `columnLogicalName:function`.
 - **Functions**: `sum`, `avg`, `min`, `max`, `count`. Default is `sum` when omitted.
 - **Example**: `"totalamount:sum, quantity:sum, duration:avg"`
-- **Notes**: Only numeric columns aggregate. Non-numeric columns are silently ignored.
-- The same configuration also drives a per-group aggregate strip in each group header when grouping is active. See **Group aggregates** under Grouping.
+- **Notes**: An entry is dropped only when its column is **not on the bound view** — the grid resolves the data type from the bound columns, and a name it cannot resolve produces no footer entry at all. Being non-numeric is *not* what drops an entry. A text column that **is** on the view aggregates and renders: blank and null cells drop out first (so they do not dilute `avg` or inflate `count`), then each remaining value is stripped down to its digits, sign and decimal point, and anything still unparseable counts as `0`. So `sum` over a text column holding `"12 units"` and `"abc"` is `12`, and `avg` is `6` — not "ignored". Configure only genuinely numeric columns — currency, decimal, float, whole number — and check the column name against the view when a total does not appear.
+- **Group subtotals (v1.6.0)**: this same configuration also drives the per-group totals shown on each group heading while a column is grouped. There is no separate per-group property — see **Grouping → Group aggregates**.
 
 ### `autoSaveRecord`
 
 When `true`, the grid commits the row to Dataverse on row blur (after the user leaves the row). When `false`, the user must explicitly trigger save.
 
-- **Effect on `parentUpdateFormulas`**: parent updates fire only on successful save, regardless of auto vs manual.
+- **Effect on `parentUpdateFormulas`**: parent previews can update while editing. Writing a preview to the parent form and enabling its submission are separate; persistence follows the parent form's save/submission settings.
 - **Conflict behavior**: optimistic — last writer wins. The control surfaces a save error if Dataverse rejects.
+- **Deleted rows**: updating an existing row never creates a replacement when that row has been deleted. Unsaved edits remain available until explicitly discarded or refreshed.
+- **Uncertain creates**: a pending new row retains its assigned identity. If a create response is lost, later save attempts check that exact identity instead of replaying the write. A confirmed record is adopted without overwriting concurrent server changes; newer local edits remain pending. If the outcome cannot be confirmed, the row stays unresolved. This protection lasts for the pending-row lifecycle and ends when its state is explicitly discarded, refreshed, or reloaded.
+- **Create ordering**: create requests from separate saves within one control instance are serialized. This does not coordinate other control instances, tabs, or users; server-side numbering and uniqueness rules remain responsible for those concurrent writers.
 
 ### `calculationFormulas`
 
@@ -238,17 +241,15 @@ When a column is grouped, a **Grouped by** chip appears on the left of the comma
 
 You can also remove grouping from the column header menu by choosing **Remove grouping**.
 
-### Group aggregates
+### Group aggregates (v1.6.0)
 
-Each group header renders an aggregate strip driven by the same `footerAggregateColumns` property used for the footer aggregate row. There is no separate property and no per-group override; the configured columns and functions apply identically to the footer and to every group.
+While a column is grouped, each group heading shows the aggregates configured in `footerAggregateColumns`, computed over that group's records only.
 
-- **Functions**: `sum`, `avg`, `min`, `max`, `count`. Omitted or unrecognised function names default to `sum`.
-- **Scope**: shown only while grouping is active. Removing grouping removes the header aggregates; the footer aggregate row is unaffected.
-- **Record set**: each group's aggregate covers that group's records after the active quick-find filter, the same filtered set used by the footer and the flat row list.
-- **Live update**: inline edits update the affected group's aggregate immediately, with no save and no server call.
-- **Format**: same as the footer, `Column display name (function): value`, e.g. `Amount (sum): 1,234.00`, with matching numeric formatting (currency symbol, decimals).
-- **Out of scope**: no aggregate functions beyond the five listed above, and no per-group formula overrides.
-- **Known issue (Bug 423237)**: if a group has no numeric values for a configured column, that group's header omits the aggregate while the footer shows 0 for the same configuration.
+- **Configuration**: none of its own. The group headings reuse `footerAggregateColumns` verbatim — the same columns and the same functions (`sum`, `avg`, `min`, `max`, `count`). There is no per-group override and no additional function.
+- **Scope**: the records in that group that pass the active search or filter. Values recompute in real time as cells are edited, so a subtotal updates as soon as its group changes.
+- **Accuracy**: exact, not sampled. While grouping is active the grid holds the full matching row set and bypasses client paging, so a group's rows are all of its rows.
+- **Empty values**: null, undefined and empty cells are non-participants — they are not counted as zero when averaging or taking a minimum over records that do have values. A group in which *every* record leaves a configured column empty shows the same value the footer shows for an empty set, so a group heading always presents the same set of aggregate columns as the footer.
+- **Clearing grouping** removes the group aggregates and leaves the footer aggregates unchanged.
 
 > **Design note (v1.5.0):** Grouping is effectively always available in v1.5.0. The underlying `enableGroupBy` manifest property still exists and is still honoured, but it is now hidden from the configuration dialog and defaults to `true`, so grouping is available out of the box without configuring anything. A sub-grid that already had `enableGroupBy = false` keeps grouping hidden after upgrading. See `yanagrid-releases.md` for migration details.
 
@@ -263,6 +264,48 @@ End users can drag a column header to reposition it. The new order is remembered
 ## Coloured choice values (v1.5.0)
 
 An option-set column whose choices have a colour defined on them renders that colour in the grid: a single-select value shows as a coloured badge, and a multi-select value or a value in the edit dropdown shows a coloured dot next to its label. A choice without a defined colour renders as plain text, unchanged from prior versions.
+
+---
+
+## Row selection, copy, export and import (v1.6.0)
+
+None of these are configured. There is deliberately **no** manifest property controlling row selection, copy, export or import.
+
+**Row selection** uses the existing checkbox column that Delete already uses. Shift+click extends a range, the header checkbox selects all, and the selection persists across client-side pages. A grid in full read-only mode (`grid.setReadOnly(true)`) has no checkboxes.
+
+**Copy** (`Ctrl+C` / `Cmd+C`, or the browser context-menu Copy) writes TSV to the clipboard: a header row of column display names, then the selected rows — or every loaded row when nothing is selected. Visible, user-ordered columns only; the Actions column is excluded. Values are the displayed forms (formatted dates, choice and lookup labels), and tabs and newlines inside a value collapse to a single space. Copy inside an active cell editor is left to the browser.
+
+**Export** is offered from the command bar's **More** (…) menu, currently as **Export to Excel** only — the CSV command is present in the export engine but not exposed as a menu item on this build. Row source is the selected rows, or all currently loaded filtered and sorted rows when nothing is selected. Column source is the visible columns in displayed order, with display names on the header row.
+
+The Excel export follows **workbook contract v2**:
+
+| Part | Purpose |
+|------|---------|
+| `Data` sheet | Visible rows, inside a named `YanaData` Excel table — the sole importable row boundary |
+| `Instructions` sheet | Visible editing rules and the colour legend |
+| `_YanaContract` sheet | Very hidden. Contract version, source table, per-column stable field identity, per-row raw baseline and `modifiedon`, locale, timezone, Excel date system, row limit |
+| `__yana_lists` sheet | Very hidden. Choice label lists backing the data sheet's dropdown validation |
+
+Number, currency, Date Only, User Local and Time-Zone Independent values are written as typed Excel cells. Choice and lookup keep their display labels, with raw identity held in the contract. Protected, calculated, rollup, formula-result, system and unsupported values render as grey locked cells; Owner and Customer lookups are display-only and belong to this group. No active Excel formulas are emitted, and a formula entered in an importable cell rejects that row until it is replaced with a literal value. CSV output, where it is produced, carries no contract data and is not importable.
+
+Date Only imports the workbook calendar date unchanged. User Local interprets the workbook's wall-clock value in the time zone recorded by the export before applying the grid's normal UTC conversion; a daylight-saving gap or overlap is rejected because it does not identify one moment. Time-Zone Independent preserves the entered clock time.
+
+**Import** reads `.xlsx` only. A file carrying this contract version is read as a round trip (keys honoured, updates proposed). Any other workbook — no contract, an unreadable one, or an **older** contract version — falls back to free-form mode: the user confirms a column map, and because such a file carries no trustworthy record identity, **every row is create-only**.
+
+Menu presence is not uniform. A read-only grid **removes** the command outright, matching Add and Delete. A missing create/update privilege or unsaved edits leave it present but disabled, with the reason as its tooltip and secondary text.
+
+| Row in the workbook | Outcome |
+|---|---|
+| Known record key, values differ | Update proposed |
+| Known record key, values identical | No change |
+| Blank record key, populated row inside `YanaData` | New row proposed (**rejected and reported**, per row, when the grid disallows adding) |
+| Well-formed key not in the grid | Skipped, reported |
+| Duplicate key | Rejected |
+| Record changed since export | Reported stale and **never applied** — no per-row override exists |
+| Any reviewed record moved, unreadable, or unverifiable at Save | **Whole save refused**, nothing written; recover with Refresh, then re-export and re-import |
+| In the grid but absent from the workbook | Untouched — import is upsert only and never deletes |
+
+Values for read-only columns and rows, calculated and rollup columns, and columns driven by `calculationFormulas` or `parentUpdateFormulas` are ignored and reported as ignored. Renamed, reordered or removed original columns are mapped through their stable field identity; added columns are reported as unknown and ignored with a warning, not an error. The review also counts recognised rows whose importable values are unchanged. A lookup display change resolves only on exactly one eligible match. Review is side-effect free until confirmed; confirmed changes are staged as ordinary unsaved grid edits, so validation, calculations, parent updates, dirty highlighting, the SDK events, **Save** and **Cancel** all behave exactly as for hand-typed edits.
 
 ---
 
@@ -337,9 +380,17 @@ These are the runtime guarantees the control offers. Integrators can rely on the
 
 1. User edits a cell → grid stages the change in-memory.
 2. User leaves the row (blur, Tab to next row, or explicit save).
-3. If `autoSaveRecord=true`, the grid POSTs the row to Dataverse via WebAPI.
+3. If `autoSaveRecord=true`, the grid saves the validated row to Dataverse via WebAPI.
 4. On success: `parentUpdateFormulas` recompute and write to parent form fields.
-5. On failure: cell-level error indicator surfaces; row stays in edit state for retry.
+5. On background save failure: persistent row status and grid feedback surface; entered values remain available for correction or retry.
+
+Since v1.6.0, each row waits for its own asynchronous `addOnSave` handler. Completion of another row's handler cannot release that wait, and repeated save triggers for the same row share its in-flight save instead of starting parallel creates or updates. Values written by the handler therefore stay with the row being saved.
+
+Auto-save validates the row before invoking `addOnSave` or writing to Dataverse. Validation failures retain the edits and show cell indicators and an in-grid message that dismisses after five seconds; repeating the failure restarts that timer. The existing 20-second save-event timeout dialog remains unchanged. Background Dataverse save failures appear as persistent row status and grid feedback without interrupting another row being edited. An unchanged failed row waits for **Retry save**; changing its values permits another automatic attempt. **Check save result** reconciles an uncertain create without replaying its write. **Go to row** moves focus only when selected and respects row validation and page-save barriers.
+
+After a successful auto-save, the grid retrieves only the saved record in the background to display server-generated values such as Owner labels. This read preserves the current page and other pending edits. Transient read failures have bounded retries; a failed display refresh does not undo the successful write. Auto-save does not fire `addOnLoad`; use `addOnRowSave` for logic that runs after each committed row. That event precedes the background display refresh.
+
+Cross-page movement owned by the grid — the pager, **Add row**, and Tab navigation — waits for outgoing rows' validation and save handling to settle. If an outgoing row remains unresolved, the grid keeps the current page and leaves its row feedback available for correction, retry, or discard. A same-page **Go to row** action does not wait for unrelated rows that are still saving. Host-level workflows that open, close, submit, or confirm a form — including **Save & Close**, **Submit**, and **Confirm** — are outside the grid's command contract; the grid does not intercept or guarantee them.
 
 ### Refresh behavior
 
@@ -348,6 +399,8 @@ These are the runtime guarantees the control offers. Integrators can rely on the
 - Refresh respects the `autoSaveRecord` flag — manual mode never auto-saves before refresh.
 
 ### Validation order
+
+Both auto-save and the grid's Save flow validate before `addOnSave`, then write only after the handler completes. An invalid auto-save row does not block another valid row from saving. Use `addOnNew` for required defaults and `addOnChange` for derived values, so they are present before validation.
 
 1. Required-field check
 2. Data-type check (numeric, date, lookup)
@@ -431,6 +484,7 @@ No manifest change required. Seed an `xts_pluginconfiguration` record for the en
 - `readOnlyStatus` is checked against `statuscode` only; custom status fields are not supported.
 - The Quick View toolbar button is data-driven (presence of `xts_pluginconfiguration`); there is no per-form manifest override.
 - Paging is **client-side only**, with a **5,000-record** load cap — a view returning more records than that is truncated at the cap. There is no export feature in this release.
+- Auto-save barriers cover commands owned by the grid. Host-level workflows that open, close, submit, or confirm a form — including **Save & Close**, **Submit**, and **Confirm** — are not intercepted or guaranteed by the grid.
 
 ---
 
@@ -460,7 +514,9 @@ Save failures surface the underlying Dataverse error message verbatim (e.g. requ
 
 | Version | Status | Namespace |
 |---------|--------|-----------|
-| 1.5.0 | Current — bundled zero-setup SDK; custom cell rendering, configurable commands/read-only grid, custom command-bar buttons, data-change events, runtime option-set filtering; grouping always available (`enableGroupBy` retained, hidden, defaults to `true`); client-side paging (`defaultPageSize` removed); drag-to-reorder columns; coloured choice values; new `gridEvent` output | `Technosoft.DMS.XRM.CustomControl.Grid` |
+| 1.6.1 | Current — persistent asynchronous auto-save feedback, stable retry and uncertain-create recovery, page-save barriers, single-row hydration with correct choice/list cell types, filtered-lookup Load More paging, and the v1.6.0 feature set | `Technosoft.DMS.XRM.CustomControl.Grid` |
+| 1.6.0 | Previous — Excel round trip, row-selection events and `getSelection()`, group subtotals, web-resource icons, save isolation, performance and accessibility improvements | `Technosoft.DMS.XRM.CustomControl.Grid` |
+| 1.5.0 | Previous — bundled zero-setup SDK; custom cell rendering, configurable commands/read-only grid, custom command-bar buttons, data-change events, runtime option-set filtering; grouping always available (`enableGroupBy` retained, hidden, defaults to `true`); client-side paging (`defaultPageSize` removed); drag-to-reorder columns; coloured choice values; new `gridEvent` output | `Technosoft.DMS.XRM.CustomControl.Grid` |
 | 1.4.0 | Previous — adds Quick View toolbar + ships in umbrella `CORE Custom Control` solution | `Technosoft.DMS.XRM.CustomControl.Grid` |
 
 See `yanagrid-releases.md` for full version history and migration notes.
@@ -477,4 +533,4 @@ See `yanagrid-releases.md` for full version history and migration notes.
 
 ---
 
-> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-api.md` for plugin version 1.4.0.
+> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-api.md` for plugin version 1.6.1.

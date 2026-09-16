@@ -1,6 +1,6 @@
 # YanaGrid — Installation Guide
 
-This guide walks an implementer through installing **YanaGrid v1.5.0** into a Microsoft Power Platform environment and binding the control to a form or sub-grid.
+This guide walks an implementer through installing **YanaGrid v1.6.0** into a Microsoft Power Platform environment and binding the control to a form or sub-grid.
 
 YanaGrid ships inside the umbrella Dataverse solution **CORE Custom Control** alongside YanaQuickView and any future Yana core PCF controls.
 
@@ -191,4 +191,4 @@ For issues not listed here, see `yanagrid-manual.md` → **Support** for the sup
 
 ---
 
-> **Bundle metadata** — generated 2026-09-04 from `.public-docs/yanagrid-install.md` for plugin version 1.4.0.
+> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-install.md` for plugin version 1.6.1.
