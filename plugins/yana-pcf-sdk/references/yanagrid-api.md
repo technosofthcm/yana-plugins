@@ -14,6 +14,8 @@ The JS SDK provides programmatic event subscription and cell manipulation from f
 
 Since **v1.5.0 the SDK ships inside the control bundle**. The control publishes `window.top.YanaEditableGrid` itself when it initializes, and signals readiness through the `gridEvent` output property. Consuming the grid requires **no Yana-specific setup**: bind the control, write your own form script.
 
+**Save-event ordering:** validation runs before `addOnSave`. Set required new-row defaults in `addOnNew` and values derived from edits in `addOnChange`. An invalid row never reaches `addOnSave`; use it only for work on an already-valid row and await asynchronous `cell.setValue()` calls. Programmatic `row.save()` does not invoke `addOnSave`. See the event reference and the user manual's **Choosing form-script events** section.
+
 ### Consuming the grid without web resoures Technosoft.Yana.Grid.js
 
 Subscribe to the control's output change from your form's OnLoad handler; when it fires the grid is alive and the API is published:
@@ -381,31 +383,39 @@ These are the runtime guarantees the control offers. Integrators can rely on the
 1. User edits a cell → grid stages the change in-memory.
 2. User leaves the row (blur, Tab to next row, or explicit save).
 3. If `autoSaveRecord=true`, the grid saves the validated row to Dataverse via WebAPI.
-4. On success: `parentUpdateFormulas` recompute and write to parent form fields.
-5. On background save failure: persistent row status and grid feedback surface; entered values remain available for correction or retry.
+4. Grid-owned movement between existing rows (same-page click or keyboard movement, the pager, and **Go to row**) does not wait for step 3 or block on the outgoing row's validation. **Add row** remains guarded by required-field validation.
+5. On success: `parentUpdateFormulas` recompute and write to parent form fields.
+6. On background save failure: persistent row status and grid feedback surface; entered values remain available for correction or retry.
 
 Since v1.6.0, each row waits for its own asynchronous `addOnSave` handler. Completion of another row's handler cannot release that wait, and repeated save triggers for the same row share its in-flight save instead of starting parallel creates or updates. Values written by the handler therefore stay with the row being saved.
 
-Auto-save validates the row before invoking `addOnSave` or writing to Dataverse. Validation failures retain the edits and show cell indicators and an in-grid message that dismisses after five seconds; repeating the failure restarts that timer. The existing 20-second save-event timeout dialog remains unchanged. Background Dataverse save failures appear as persistent row status and grid feedback without interrupting another row being edited. An unchanged failed row waits for **Retry save**; changing its values permits another automatic attempt. **Check save result** reconciles an uncertain create without replaying its write. **Go to row** moves focus only when selected and respects row validation and page-save barriers.
+Auto-save validates the row before invoking `addOnSave` or writing to Dataverse. Validation failures retain the edits and show cell indicators and an in-grid message that retracts as soon as the row's last blocking field is fixed, or otherwise dismisses after five seconds; repeating the failure restarts that timer. Since v1.6.2, the save-event budget is 120 seconds, and an expiry no longer opens a dialog — it surfaces the same way a background Dataverse save failure does. Background Dataverse save failures appear as persistent row status and grid feedback without interrupting another row being edited. An unchanged failed row waits for **Retry save**; changing its values permits another automatic attempt. **Check save result** reconciles an uncertain create without replaying its write. **Go to row** moves focus only when selected and respects row validation.
 
 After a successful auto-save, the grid retrieves only the saved record in the background to display server-generated values such as Owner labels. This read preserves the current page and other pending edits. Transient read failures have bounded retries; a failed display refresh does not undo the successful write. Auto-save does not fire `addOnLoad`; use `addOnRowSave` for logic that runs after each committed row. That event precedes the background display refresh.
 
-Cross-page movement owned by the grid — the pager, **Add row**, and Tab navigation — waits for outgoing rows' validation and save handling to settle. If an outgoing row remains unresolved, the grid keeps the current page and leaves its row feedback available for correction, retry, or discard. A same-page **Go to row** action does not wait for unrelated rows that are still saving. Host-level workflows that open, close, submit, or confirm a form — including **Save & Close**, **Submit**, and **Confirm** — are outside the grid's command contract; the grid does not intercept or guarantee them.
+Moving between existing rows is allowed even when the outgoing row has validation errors, including when movement crosses a page. Valid editor drafts are committed through the normal cell transaction before they leave the rendered page; invalid text and its field feedback remain in grid memory for the lifetime of the control, including while paging or virtualized rows unmount and remount. Invalid drafts are not written. Saving another valid row remains possible while an invalid row is retained. **Add row** continues to check required fields before creating a row. A row whose background save fails after the grid has moved on is reported through persistent row status and grid feedback, with **Go to row** and **Retry save** available; **Go to row** reaches the row on whatever page it is on. Host-level workflows that open, close, submit, or confirm a form — including **Save & Close**, **Submit**, and **Confirm** — remain outside the grid's command contract; the grid does not intercept or guarantee them.
 
 ### Refresh behavior
 
 - The grid refreshes when the host form refreshes.
 - Discard Changes reverts staged edits to the last known server values.
 - Refresh respects the `autoSaveRecord` flag — manual mode never auto-saves before refresh.
+- **Since v1.6.2:** when Refresh cannot proceed because a row is still settling its save, it names the blocking row in an in-grid message instead of doing nothing silently.
 
 ### Validation order
 
-Both auto-save and the grid's Save flow validate before `addOnSave`, then write only after the handler completes. An invalid auto-save row does not block another valid row from saving. Use `addOnNew` for required defaults and `addOnChange` for derived values, so they are present before validation.
+Both auto-save and the grid's Save flow validate before `addOnSave`, then write only after the handler completes. Grid validation failures, including an explicit **Save**, use text below the command bar and cell feedback instead of a host dialog. An invalid auto-save row does not block another valid row from saving. Use `addOnNew` for required defaults and `addOnChange` for derived values, so they are present before validation.
 
 1. Required-field check
 2. Data-type check (numeric, date, lookup)
 3. `calculationFormulas` recompute
 4. `parentUpdateFormulas` re-aggregate (preview only; commits on save)
+
+**Since v1.6.2, the required-field check matches the platform and the render path:**
+
+- **Only Business Required and System Required block a save.** A column configured as Business Recommended in Dataverse no longer counts as required — the same rule already applied by the platform's own form validation.
+- **A column the user cannot fill is never checked.** The required-field check now skips exactly the columns the grid itself refuses to make editable: system-managed columns, a read-only cell (whether the whole column is locked or just that row), a disabled cell, a calculated or formula-calculated column, a cell on an inactive record, and a cell the user lacks update access to. Previously the grid could block a save on a cell the user had no way to edit.
+- **The required set follows what is actually on screen.** Showing or hiding a column at runtime (after the initial load) adds or removes it from the required-field check to match — a column hidden after load stops being required, and one shown after load becomes required.
 
 ### Paging (v1.5.0, client-side)
 
@@ -514,7 +524,8 @@ Save failures surface the underlying Dataverse error message verbatim (e.g. requ
 
 | Version | Status | Namespace |
 |---------|--------|-----------|
-| 1.6.1 | Current — persistent asynchronous auto-save feedback, stable retry and uncertain-create recovery, page-save barriers, single-row hydration with correct choice/list cell types, filtered-lookup Load More paging, and the v1.6.0 feature set | `Technosoft.DMS.XRM.CustomControl.Grid` |
+| 1.6.2 | Current — **Add row** and grid-owned page changes no longer wait for a background save, and a row with invalid input no longer blocks moving between rows or pages (it is still never written); a failed background save stays recoverable through **Go to row** and **Retry save**. Otherwise the v1.6.1 feature set | `Technosoft.DMS.XRM.CustomControl.Grid` |
+| 1.6.1 | Previous — persistent asynchronous auto-save feedback, stable retry and uncertain-create recovery, page-save barriers, single-row hydration with correct choice/list cell types, filtered-lookup Load More paging, and the v1.6.0 feature set | `Technosoft.DMS.XRM.CustomControl.Grid` |
 | 1.6.0 | Previous — Excel round trip, row-selection events and `getSelection()`, group subtotals, web-resource icons, save isolation, performance and accessibility improvements | `Technosoft.DMS.XRM.CustomControl.Grid` |
 | 1.5.0 | Previous — bundled zero-setup SDK; custom cell rendering, configurable commands/read-only grid, custom command-bar buttons, data-change events, runtime option-set filtering; grouping always available (`enableGroupBy` retained, hidden, defaults to `true`); client-side paging (`defaultPageSize` removed); drag-to-reorder columns; coloured choice values; new `gridEvent` output | `Technosoft.DMS.XRM.CustomControl.Grid` |
 | 1.4.0 | Previous — adds Quick View toolbar + ships in umbrella `CORE Custom Control` solution | `Technosoft.DMS.XRM.CustomControl.Grid` |
@@ -533,4 +544,4 @@ See `yanagrid-releases.md` for full version history and migration notes.
 
 ---
 
-> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-api.md` for plugin version 1.6.1.
+> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-api.md` for plugin version 1.6.2.

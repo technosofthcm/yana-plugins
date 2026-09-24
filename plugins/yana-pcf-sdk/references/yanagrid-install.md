@@ -191,4 +191,4 @@ For issues not listed here, see `yanagrid-manual.md` → **Support** for the sup
 
 ---
 
-> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-install.md` for plugin version 1.6.1.
+> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-install.md` for plugin version 1.6.2.

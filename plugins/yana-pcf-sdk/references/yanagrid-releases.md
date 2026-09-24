@@ -4,6 +4,32 @@ Curated, version-by-version change history for YanaGrid. Each entry summarises u
 
 ---
 
+## v1.6.2 — September 2026
+
+**Upgrade from:** v1.6.1
+**Solution:** Managed `CORE Custom Control` (`CORECustomControl`)
+
+A follow-up to v1.6.1 that lets the grid keep moving instead of pausing. Moving between rows and pages no longer waits for a background save, and no longer stops at a row with invalid input: that input stays on its row until it is fixed, and Save, Add row, Refresh and opening the record still refuse to write it. A background save that fails remains fully recoverable, and dates stay visible after a save.
+
+### Fixes
+
+- **Add row and page changes no longer wait for a background save.** The pager, **Add row**, and Tab navigation used to wait for an outgoing row's save to finish before moving, as introduced in v1.6.1. They now move immediately, letting the save continue in the background. This supersedes the v1.6.1 "Page changes wait for outgoing rows" behavior.
+- **A row with invalid input no longer blocks moving.** You can move to another row, or to another page, while a row still has a missing or invalid value. What you typed and the row's error markers are kept — including while you page away and back — and a message below the command bar lists the invalid rows with **Go to row**. **Save**, **Add row**, **Refresh** and opening the record still refuse to write an invalid row, and a valid row saves on its own while another row stays invalid. Removing an unsaved new row also clears its errors, so it can no longer block **Add row**.
+- **Required fields are checked when you leave the row.** An empty required cell is flagged when you leave its row, or when you save or add a row, not while you are still moving between the cells of that row. A value in the wrong format is still flagged as you type.
+- **Saves still recover.** A row whose background save fails after the grid has moved on is reported through persistent row status and grid feedback, with **Go to row** and **Retry save** available; **Go to row** reaches the row on whatever page it is now on. Grid validation, including on an explicit **Save**, now shows as text below the command bar instead of a pop-up, and **Refresh** names the row it is waiting for instead of appearing to do nothing.
+- **Required-field rules match the platform.** Only Business Required and System Required columns block a save — a Business Recommended column no longer does. A cell the user cannot fill (read-only, disabled, calculated, on an inactive record, or without update access) is never checked, and showing or hiding a column after load adds it to or removes it from the check.
+- **Dates stay visible after a save.** A date could disappear from its cell after an auto-save, or show as `NaN/NaN/NaN`. The value now stays displayed.
+- **Lookup Search works after adding a row.** In a row added with **Add row**, a lookup's **Search** could fail to open its results. It now opens reliably, and clicking **Search** in an empty required lookup no longer flags it as Required.
+- **Add row's required-field check is scoped to the row you're in.** Add row checks required fields only on the row you're currently working in and any new row you've already added but not yet saved, not every row on the page.
+- **Saves no longer stall on forms that still load an older `Technosoft.Yana.Grid.js`.** On a form whose form library is a copy of `Technosoft.Yana.Grid.js` older than the bundled-SDK release, every row save waited for the full save-event timeout and was then abandoned without writing. The grid now recognises that library's save acknowledgement, so those saves complete normally. On such forms the grid runs one row's `addOnSave` at a time, so each acknowledgement is matched to the right row; forms using the bundled SDK or the current compatibility shim are unchanged. The browser console logs a one-time warning that names the outdated form library — replace it with the current `Technosoft.Yana.Grid.js` from `CORE Custom Control`.
+- **The save-event timeout is now 2 minutes and no longer opens a dialog.** If a form's `addOnSave` handlers do not respond within 2 minutes, the row keeps the user's changes and shows a persistent message — "Saving is taking longer than expected — we couldn't confirm this row within 2 minutes." — with **Check save result** to try again. This replaces the 20-second "Save Event Timed Out!" dialog, and supersedes the v1.6.1 note below that the 20-second timeout was unchanged.
+
+### Form-script (SDK) changes
+
+- **`cell.setValue()` now rejects when it is not acknowledged.** A call the grid cannot apply — typically a cell on another page — rejects with a `YanaGridTimeoutError` after 6 seconds instead of never settling. Add a `.catch()` to calls you do not await.
+- **`row.save()` and `row.delete()` wait up to 30 seconds** for the grid's acknowledgement, up from 6.
+- **Validation runs before `addOnSave`.** Set required new-row defaults in `addOnNew` and derived values in `addOnChange`; an invalid row never reaches `addOnSave`. See the user manual's **Choosing form-script events** section.
+
 ## v1.6.1 — September 2026
 
 **Upgrade from:** v1.6.0
@@ -407,4 +433,4 @@ Ships in the **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse so
 
 ---
 
-> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-releases.md` for plugin version 1.6.1.
+> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-releases.md` for plugin version 1.6.2.

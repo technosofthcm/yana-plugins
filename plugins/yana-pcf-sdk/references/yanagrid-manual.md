@@ -49,7 +49,9 @@ This section is for people using a Yana DMS screen day to day.
 2. Type the new value, choose from the dropdown, or pick a date.
 3. Press **Tab** to move to the next cell, or click another cell.
 
-The cell border turns blue while you are editing. A red border means the value is invalid (for example, required and empty). Hover the cell to see the validation message. In a required column, an actual value of 0 or "No" counts as filled — only a truly blank cell is treated as missing.
+The cell border turns blue while you are editing. A red border means the value is invalid (for example, required and empty). Hover the cell to see the validation message. An empty required cell is flagged when you leave its row — or when you save or add a row — not while you are still moving between the cells of that row, so you can fill a row in any order. A value in the wrong format is still flagged as you type. In a required column, an actual value of 0 or "No" counts as filled — only a truly blank cell is treated as missing. A column marked Business Recommended (rather than Business Required) never blocks a save, even when it is empty. A cell you cannot edit — greyed out, locked, or not shown on the form — is also never treated as a blocking required field.
+
+In a number or currency cell, typing a valid value clears its red border immediately — you do not need to leave the cell (blur) first. Typing does not raise a new red border on its own; an in-progress entry such as a lone `-` or a trailing decimal point is only judged once you leave the cell.
 
 Hovering a cell also shows its full value as a tooltip, which is useful when a column is too narrow to show everything. The tooltip shows the same text the cell displays — a lookup shows the record's name, a choice column its label — from the moment you make the edit, without waiting for a save. Clearing a cell leaves the tooltip empty.
 
@@ -68,20 +70,20 @@ Screen readers announce each cell's column, whether it can be edited, and any va
 
 Whether your screen auto-saves or not depends on how it was set up.
 
-- **Auto-save on** — moving off the row (Tab to next row, or click another row) commits your changes automatically. You will see a brief saving indicator.
+- **Auto-save on** — moving off the row (Tab to next row, or click another row) commits your changes automatically. The row shows its own saving status; moving around the grid does not wait for it to finish.
 - **Auto-save off** — your changes are staged in memory until you click **Save** on the grid toolbar.
 
 Since v1.6.0, moving quickly between edited rows does not start overlapping saves for the same row. Each row waits for its own form-script save handler, so a different row finishing first cannot drop changes written by that handler or cause a duplicate create.
 
-If validation fails, the row stays in edit mode with the cell highlighted and an error message. Common causes: a required field is empty, or the value has the wrong format or type.
+If validation fails, the row stays in edit mode with the cell highlighted and a text message below the command bar. This also applies when you click **Save**: grid validation does not open a pop-up. Common causes: a required field is empty, or the value has the wrong format or type. The message clears itself as soon as you fix the last field it was complaining about on that row — you do not need to wait for it to time out.
 
-For auto-save, the pager, **Add row**, and Tab navigation wait for the rows leaving the current page to finish validation and save handling. If a row is still unresolved, the grid stays on the current page so its values and feedback remain available. **Go to row** on the same page does not wait for another row's save. Host form workflows that open, close, submit, or confirm a form remain outside the grid's control.
+For auto-save, the pager, **Add row**, and Tab navigation move on immediately, letting the save continue in the background. A row that fails validation does not stop you from moving: its values and error markers stay on that row, and the message below the command bar lists it with **Go to row** until you fix it. Save, **Add row**, and Refresh still refuse to write an invalid row. A row whose background save fails is reported with persistent row status and grid feedback, including **Go to row** and **Retry save**; **Go to row** reaches the row on whatever page it is on. A save that takes an unusually long time to be acknowledged by a form script is reported the same way — as a persistent, retryable row status rather than a pop-up that interrupts what you are doing. Host form workflows that open, close, submit, or confirm a form remain outside the grid's control.
 
 **Clear the search before saving.** While a term is in the search box, **Save** is disabled — hover it and the grid explains why: rows hidden by the filter may have unresolved errors, and saving while they are out of view would commit problems you never had the chance to see. Clear the search and **Save** is available again. This is the same rule as **Add row**, below.
 
 ### Adding a row
 
-Click the **Add row** button on the command bar. A blank row appears at the bottom of the grid; the grid scrolls it into view and puts the cursor in its first editable cell so you can start typing immediately. Fill in the required fields and the row commits on save. (If a required field on the current rows is still empty, the grid asks you to complete it before adding another row.)
+Click the **Add row** button on the command bar. A blank row appears at the bottom of the grid; the grid scrolls it into view and puts the cursor in its first editable cell so you can start typing immediately. Fill in the required fields and the row commits on save. (If a required field is still empty on the row you're working in, or on a new row you already added but haven't saved yet, the grid asks you to complete it before adding another row. When the new row belongs on the next page, the grid also checks the rows you are leaving, as described above.)
 
 On a grid with no rows at all you can also just click anywhere in the empty grid, or on the **Click here to add a new row** prompt, to create the first row.
 
@@ -90,6 +92,8 @@ On a grid with no rows at all you can also just click anywhere in the empty grid
 ### Deleting a row
 
 Select the row's checkbox, then click **Delete** on the toolbar. You will be asked to confirm, and the grid refreshes once you do.
+
+Removing an unsaved row also clears that row's validation messages. Errors belonging to other rows remain visible.
 
 ### Selecting rows
 
@@ -234,7 +238,7 @@ Use the **Discard Changes** toolbar button to revert the row to the values that 
 
 ### Refreshing
 
-The **Refresh** toolbar button reloads the data from Dataverse. With auto-save off, refresh discards staged edits — save first if you want to keep them.
+The **Refresh** toolbar button reloads the data from Dataverse. With auto-save off, refresh discards staged edits — save first if you want to keep them. If a row is still in the middle of saving, Refresh cannot proceed yet — it tells you which row is holding it up so you know what to wait for, rather than appearing to do nothing.
 
 ### Quick View
 
@@ -255,7 +259,7 @@ Either the column is configured as read-only, or the row's status puts the whole
 **Why didn't my change save?**
 Look for a red border on a cell or a banner at the top. The grid will not save a row with invalid values. Fix the highlighted cells and save again.
 
-When a background save fails, the row shows **Save failed** and a persistent message identifies the row. You can continue editing another independent row without an error dialog interrupting typing. Choose **Go to row** to correct the failed row, or **Retry save** to try the same values again. Moving between rows does not repeatedly retry unchanged failed values. The message clears when the save succeeds or the changes are discarded. A hidden row remains listed; clear the search or expand its group before navigating to it.
+When a background save fails, the row shows **Save failed** and a persistent message identifies the row. You can continue editing another independent row without an error dialog interrupting typing. Choose **Go to row** to correct the failed row, or **Retry save** to try the same values again. Moving between rows does not repeatedly retry unchanged failed values. The message clears when the save succeeds or the changes are discarded. A hidden row remains listed; clear the search or expand its group before navigating to it. This same persistent, retryable status is also how an unusually slow save is reported — whether it is one row auto-saving or you clicked the toolbar **Save** to commit several rows at once — rather than a pop-up interrupting your work.
 
 If the grid cannot confirm whether a new row was created after a connection error, it keeps the changes pending. Choose **Check save result** to check for that same row. It will not automatically create a replacement while the result remains uncertain. Keep your entered values before refreshing or discarding, and confirm the original row's status before adding a replacement. Discarding local changes does not reverse a request the server has already accepted.
 
@@ -325,6 +329,19 @@ Since v1.6.0, a form script can subscribe to effective row-selection changes thr
 
 Full property reference: `yanagrid-api.md` → **Property reference**.
 
+### Choosing form-script events
+
+The grid validates a row **before** it runs `addOnSave`. If a required field is empty, the save event does not run, so it cannot supply that field's missing value. Choose the event for the point when the value becomes available:
+
+| Purpose | Event |
+|---------|-------|
+| Populate defaults on an inline new row, including required values | `addOnNew` |
+| Derive a value from another cell edit | `addOnChange` |
+| Complete asynchronous work before writing an already-valid row | `addOnSave` |
+| React after a row has been committed | `addOnRowSave` |
+
+In an asynchronous handler, use `await cell.setValue(value)` and let the handler return its Promise. Starting the call without awaiting it does not make the save wait for that value. A missing cell or failed acknowledgement needs explicit error handling; do not assume the value was applied. Programmatic `row.save()` validates and writes without invoking `addOnSave`. See `yanagrid-events.md` for handler examples and acknowledgement details.
+
 ### Designing for end users
 
 - Keep visible columns to a useful minimum — the bound view determines them. Edit the view, not the control.
@@ -367,6 +384,7 @@ Use `CurrentRecordId` and `CurrentUserId` placeholders in filter conditions to k
 | 18 | With unsaved edits and a search term active, Save is disabled with its tooltip; clearing the search re-enables it |
 | 19 | Subscribe to `addOnSelectionChange`, select and clear rows, then confirm `getSelection()` returns the same effective selection |
 | 20 | With an asynchronous `addOnSave` handler, leave two edited rows quickly — each row saves once with its own handler-written values |
+| 21 | With auto-save on and a row still saving, click Add row on a full page — the new row lands on the next page with the cursor in its first editable cell, without waiting |
 
 ### Support
 
@@ -384,4 +402,4 @@ For issues, behavior questions, or feature requests, contact the Technosoft DMS 
 
 ---
 
-> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-manual.md` for plugin version 1.6.1.
+> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-manual.md` for plugin version 1.6.2.

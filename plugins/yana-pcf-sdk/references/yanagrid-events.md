@@ -132,7 +132,7 @@ grid.removeOnLoad(handler);
 
 Since **v1.6.1**, auto-saving a row does not fire `addOnLoad`. The background read of that saved record is not a grid refresh. Manual Save retains its existing grid refresh behavior.
 
-**Migration:** move logic that must run after each successful auto-save from `addOnLoad` to `addOnRowSave`. Use `ctx.data.row` to apply the logic to the saved row; keep grid initialization and full-refresh logic in `addOnLoad`. Use `addOnNew` for new-row defaults and `addOnChange` for values derived from edits. This is a breaking event-scope change for auto-save; the existing 20-second `addOnSave` timeout modal is unchanged.
+**Migration:** move logic that must run after each successful auto-save from `addOnLoad` to `addOnRowSave`. Use `ctx.data.row` to apply the logic to the saved row; keep grid initialization and full-refresh logic in `addOnLoad`. Use `addOnNew` for new-row defaults and `addOnChange` for values derived from edits. This is a breaking event-scope change for auto-save; see `addOnSave` below for its completion timeout.
 
 **`eventContext.data` shape:**
 
@@ -253,16 +253,37 @@ grid.removeOnSave(handler);
 |----------|---------|-------------|
 | `parentEntity` | always | Host form entity reference. |
 | `table` | always | `EditableGrid` with all rows. |
-| `row` | yes | The `Row` being saved. |
+| `row` | auto-save only | The `Row` being saved. Grid Save is table-scoped; use `table.getRows()` there. |
 | `cell` | no | — |
 
-**Completion semantics:** the grid waits up to **20 seconds** for the handler to complete (await resolution). After the handler finishes — whether it resolves or throws — the grid resumes the save lifecycle. If the handler throws, the grid surfaces an error dialog via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack, then continues. If the handler does not complete within 20 seconds, the grid surfaces a `Common.SaveEventTimeout` error dialog and stops that save attempt; edits remain available for retry.
+**Completion semantics (since v1.6.2):** the grid waits up to **120 seconds** for the handler to complete (await resolution). After successful completion, the grid reads the latest staged values and continues saving. If the handler throws an ordinary error, the grid surfaces an error dialog via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack, then continues. An SDK acknowledgement timeout that propagates from an awaited call is different: it stops that save attempt with a persistent row-save diagnostic instead of treating the handler as successful. If the handler does not complete within 120 seconds, the wait rejects with a typed save-event timeout error. Neither timeout opens a dialog; the row's claim is released and persistent feedback offers **Go to row** and recovery. A definite pre-write failure offers **Retry save**; an uncertain result offers **Check save result**. Edits remain available for recovery.
 
 Required defaults must already exist before this event. Populate new-row defaults in `addOnNew`, and derive dependent values in `addOnChange`; `addOnSave` cannot fill a required field to rescue a row that failed validation.
 
+Always return the asynchronous handler's Promise and `await cell.setValue(value)` inside it. A fire-and-forget call does not delay completion of the handler, so its value is not guaranteed to be included in that save. Check that `row.getCell(schemaName)` returned a cell and handle rejected calls; a successful save does not prove an unawaited update was applied.
+
+```js
+grid.addOnSave(async function (instance, context) {
+    // Auto-save supplies one row; grid Save supplies the table.
+    const rows = context.data.row
+        ? [context.data.row]
+        : context.data.table.getRows();
+    for (const row of rows) {
+        // Replace with an optional text column included and visible in your view.
+        const cell = row.getCell("xts_description");
+        if (!cell) throw new Error("The description column is unavailable.");
+        await cell.setValue("Prepared by the save handler");
+    }
+});
+```
+
 **Concurrent saves (since v1.6.0):** each row waits for its own handler invocation. One row's handler finishing cannot release another row's save, and repeated triggers for the same row reuse its in-flight save instead of issuing parallel creates or updates. Values written by an asynchronous handler are included in the row that invoked it.
 
-> Throwing from an `addOnSave` handler does not prevent the record from saving. It surfaces an error dialog and then save proceeds. To perform async validation before save, use `cell.setNotification()` from an `addOnChange` handler to surface field-level messages before the save is attempted.
+Validation failures are shown as text below the command bar, with the affected cells highlighted, including when the user explicitly clicks **Save**. They do not open a host validation dialog and do not invoke `addOnSave`.
+
+> An ordinary error thrown from an `addOnSave` handler surfaces an error dialog and then save proceeds. SDK acknowledgement timeouts are handled separately, as described below. To perform async validation before save, use `cell.setNotification()` from an `addOnChange` handler to surface field-level messages before the save is attempted.
+>
+> **Awaiting `cell.setValue()` inside `addOnSave` (since v1.6.2):** if the awaited call rejects with the SDK's own acknowledgement-timeout error (see `setValue` details below) and that rejection propagates out of your handler, the save stops with a persistent row-save diagnostic and a console warning. It does **not** open an error dialog or silently continue writing without the value. If your handler catches that error and returns successfully, it has accepted responsibility for recovery; do not swallow a failed required update.
 
 ---
 
@@ -464,10 +485,22 @@ Obtained via `window.top.YanaEditableGrid.getEditableGrid(instance, gridId)`. Re
 | `setReadOnlyColumns` | `(columnNames: string[]) → void` | Mark columns as read-only across all rows. Pass an empty array to clear. |
 | `setReadOnlyColumnsByRow` | `(rowId: string, columnNames: string[]) → void` | Mark columns as read-only for a specific row only. |
 | `setRowHighlight` | `(rowId: string, highlight: boolean) → void` | Toggle visual highlight on a row. |
-| `setVisibleHiddenColumns` | `(columnNames: string[]) → void` | Control column visibility. Columns in the array become visible; others are hidden. |
+| `setVisibleHiddenColumns` | `(changes: { fieldName: string, isHidden: boolean }[]) → void` | Update visibility for named columns. `isHidden: true` hides the named column; `false` shows it again. Other columns keep their current visibility. |
 | `setAllowAdd` | `(allow: boolean) → void` | Show (`true`) or hide (`false`) the **Add New** / **New Form** buttons. |
 | `setAllowDelete` | `(allow: boolean) → void` | Show (`true`) or hide (`false`) the **Delete** button. |
 | `setReadOnly` | `(readOnly: boolean) → void` | Toggle full grid read-only. See **Grid lock / read-only** below. |
+
+```js
+// Hide one column without changing other columns.
+grid.setVisibleHiddenColumns([
+    { fieldName: "xts_internalnote", isHidden: true }
+]);
+
+// Restore that column later.
+grid.setVisibleHiddenColumns([
+    { fieldName: "xts_internalnote", isHidden: false }
+]);
+```
 
 ### Custom command buttons (since v1.5.0)
 
@@ -589,8 +622,8 @@ A `Row` represents a single grid row returned from `getRows()`, `getRow()`, or a
 | `setHighlight(highlight)` | `(highlight: boolean) → void` | Toggle the row's visual highlight. |
 | `setNotification(message, options?)` | `(message: string, options?: object) → void` | Show a row-scoped notification (icon + tooltip + row tint) in the action column. Supports three severities; an `error`-type notification **blocks the row from saving**. See below. |
 | `clearNotification()` | `() → void` | Remove any row-scoped notification (icon, tint, and field borders). |
-| `save()` | `() → Promise<void>` | Save this single row; resolves once the grid acknowledges the commit (rejects on failure or after a 6s timeout). Triggers `addOnRowSave`. Useful when auto-save is off. |
-| `delete()` | `() → Promise<void>` | Delete this row; resolves once the grid acknowledges the removal. For existing records the platform confirmation dialog is still shown. Triggers `addOnRowDelete`. |
+| `save()` | `() → Promise<void>` | Save this single row; resolves once the grid acknowledges the commit (rejects on failure or after a 30s acknowledgement timeout — since v1.6.2, longer than the 6s default used by other SDK calls, allowing more time for slow writes). Triggers `addOnRowSave`. Useful when auto-save is off. |
+| `delete()` | `() → Promise<void>` | Delete this row; resolves once the grid acknowledges the removal (same 30s acknowledgement timeout as `save()`, since v1.6.2). For existing records the platform confirmation dialog is still shown. Triggers `addOnRowDelete`. |
 
 **`setNotification` options:**
 
@@ -890,7 +923,7 @@ const newValue = await cell.setValue(value);
 
 - **Resolves** with the new value on success.
 - **Rejects** with a string beginning with `Validation Error:` when platform validation fails (e.g., a required field constraint or data-type mismatch).
-- **Rejects** with a `YanaGridTimeoutError` when the grid does not acknowledge the update within 6 seconds *(since v1.5.1)*.
+- **Rejects** with a `YanaGridTimeoutError` when the grid does not acknowledge the update within 6 seconds *(since v1.6.2)*.
 
 ```js
 try {
@@ -906,11 +939,13 @@ try {
 }
 ```
 
-**Timeout rejection (since v1.5.1).** `setValue` needs the grid to apply the change and acknowledge it. That work is done by the cell's on-screen editor, so a cell that is **not currently displayed** has nothing to apply the update and nothing to acknowledge it. The most common case is a row on another page: `getRows()` returns every loaded row, but only the current page is on screen.
+**Timeout rejection (since v1.6.2).** `setValue` needs the grid to apply the change and acknowledge it. That work is done by the cell's on-screen editor, so a cell that is **not currently displayed** has nothing to apply the update and nothing to acknowledge it. The most common case is a row on another page: `getRows()` returns every loaded row, but only the current page is on screen.
 
-After 6 seconds without an acknowledgement the promise rejects with a `YanaGridTimeoutError` carrying `name`, `message`, `operation` (`"setValue"`) and `timeoutMs`. Test with `err.name === "YanaGridTimeoutError"`, not `instanceof` — the bundled SDK and the web resource are separate realms.
+After 6 seconds without an acknowledgement the promise rejects with a `YanaGridTimeoutError` carrying `name`, `message`, `operation` (`"setValue"`) and `timeoutMs`. Test with `err.name === "YanaGridTimeoutError"`, not `instanceof` — the bundled SDK and the web resource are separate realms. That rejection never opens a host dialog on its own, even when it escapes an `addOnSave` or `addOnChange` handler the grid invoked — see **Error dialog** in Limitations.
 
-> **Behaviour change.** On v1.5.0 and earlier this promise never settled at all: `await cell.setValue(...)` on an off-screen cell hung forever with no error. If you call `setValue` **without** `await` and without a `.catch()`, a timeout now surfaces as an unhandled promise rejection in the browser console. Add a `.catch()` to fire-and-forget calls. Code that awaited such a call could never complete before, so no working script changes behaviour.
+A timeout does not cancel or roll back the requested change. A pending update can still apply when its editor appears again. Check the current values before retrying; a rejected acknowledgement is not proof that the value stayed unchanged.
+
+> **Behaviour change.** Before v1.6.2 this promise never settled at all: `await cell.setValue(...)` on an off-screen cell hung forever with no error. If you call `setValue` **without** `await` and without a `.catch()`, a timeout now surfaces as an unhandled promise rejection in the browser console. Add a `.catch()` to fire-and-forget calls. Code that awaited such a call could never complete before, so no working script changes behaviour.
 
 **Lookup fields:** the resolved value is the normalized lookup reference returned by the platform — an object `{ id, name, data }` (`id` = record GUID, `name` = display name) — which may differ from the raw value passed in.
 
@@ -934,7 +969,7 @@ Clearing a **required** cell is still rejected by validation (the Promise reject
 
 ## Worked example
 
-The following form script demonstrates a common pattern: subscribing to a status column change and applying conditional read-only logic, plus an `addOnSave` async validation.
+The following form script demonstrates a common pattern: subscribing to a status column change and applying conditional read-only logic, plus an `addOnSave` diagnostic. The diagnostic is not a validation gate: an ordinary thrown error does not cancel saving.
 
 ```js
 // Form library: Technosoft.Yana.Grid.js (load order: 1)
@@ -961,7 +996,7 @@ async function onFormLoad(executionContext) {
     // Subscribe to customer lookup changes.
     grid.addOnChange("xts_customerid", onCustomerChange);
 
-    // Subscribe to save lifecycle for async validation.
+    // Subscribe to save lifecycle for diagnostics, not validation.
     grid.addOnSave(onBeforeSave);
 }
 
@@ -1158,11 +1193,11 @@ retains its 6-second acknowledgement timeout.
 | Limitation | Detail |
 |-----------|--------|
 | `getEditableGrid` timeout | 60 seconds. If the grid has not initialized within this window, the Promise resolves with `null`. |
-| `addOnSave` completion timeout | 20 seconds. Since v1.6.1, if the handler does not complete within 20 seconds, the grid surfaces a `Common.SaveEventTimeout` error dialog and stops that save attempt. Edits remain available for retry. |
-| `row.save()` / `row.delete()` ack timeout | 6 seconds. If the grid does not acknowledge the operation within 6 seconds, the returned Promise rejects with a timeout message. |
+| `addOnSave` completion timeout | 120 seconds (since v1.6.2; previously 20 seconds). If the handler does not complete within the window, the wait rejects with a typed save-event timeout error and stops that save attempt — no dialog opens. The row is reported as a persistent, retryable row-save issue instead. Edits remain available for retry. |
+| `row.save()` / `row.delete()` ack timeout | 30 seconds (since v1.6.2; previously 6 seconds). If the grid does not acknowledge the operation within that window, the returned Promise rejects with a timeout error. |
 | `getSelection()` ack timeout | 6 seconds. If the grid does not acknowledge the read within 6 seconds, the returned Promise rejects with a `YanaGridTimeoutError` rather than resolving an empty selection. |
 | `addOnRowDelete` cancelability | Not cancelable. It fires *after* removal, so a handler cannot block the delete. The platform confirmation dialog (shown for existing records) is the only pre-delete gate. |
-| Error dialog | Handler exceptions surface via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack trace. |
+| Error dialog | An ordinary handler exception surfaces via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack trace. One exception: the SDK's own acknowledgement-timeout error (`name: "YanaGridTimeoutError"`, raised by `setValue`, `save()`, `delete()` and `getSelection()`) is always logged as a console warning instead, even when it escapes a handler the grid invoked. The `addOnSave` completion timeout above is a separate mechanism — it never reaches the consumer's handler, so it was never routed through this dialog either; it now opens no dialog at all and reports as a row-save issue instead. |
 | Message protocol | All communication uses JSON-stringified `postMessage` between the form window and the grid iframe. The library abstracts this, but cross-origin restrictions apply when grids are embedded in unusual iframe configurations. |
 | Load order | `Technosoft.Yana.Grid.js` must be listed as a form library before any script that calls `window.top.YanaEditableGrid`. Incorrect load order results in `window.top.YanaEditableGrid` being `undefined`. |
 | Cross-grid events | There is no cross-grid event surface. Each `EditableGrid` instance manages its own event subscriptions independently. |
@@ -1188,4 +1223,4 @@ The JS SDK is versioned together with the umbrella solution `CORE Custom Control
 
 ---
 
-> **Bundle metadata** — generated 2026-09-16 from `.public-docs/yanagrid-events.md` for plugin version 1.6.1.
+> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-events.md` for plugin version 1.6.2.
