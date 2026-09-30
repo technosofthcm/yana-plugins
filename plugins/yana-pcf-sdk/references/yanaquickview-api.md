@@ -227,4 +227,4 @@ See `yanaquickview-releases.md` for change history.
 
 ---
 
-> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanaquickview-api.md` for plugin version 1.6.2.
+> **Bundle metadata** — generated 2026-09-30 from `.public-docs/yanaquickview-api.md` for plugin version 1.7.0.

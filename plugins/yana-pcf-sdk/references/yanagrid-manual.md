@@ -62,7 +62,7 @@ The whole grid is reachable from the keyboard.
 - **Tab** moves to the next cell, **Shift+Tab** to the previous one, and the arrow keys move between cells and rows.
 - **Enter** commits the cell you are in; **Escape** abandons what you typed in it.
 - Tabbing past the last cell of a row continues on the next row, and the row-action icons on the right are reachable the same way.
-- After a save, focus returns to where you were working rather than jumping back to the top of the grid.
+- After a save, focus returns to where you were working rather than jumping back to the top of the grid. A toolbar **Save** also keeps the page you were on and the rows you had selected.
 
 Screen readers announce each cell's column, whether it can be edited, and any validation error on it, along with which rows are selected.
 
@@ -77,7 +77,38 @@ Since v1.6.0, moving quickly between edited rows does not start overlapping save
 
 If validation fails, the row stays in edit mode with the cell highlighted and a text message below the command bar. This also applies when you click **Save**: grid validation does not open a pop-up. Common causes: a required field is empty, or the value has the wrong format or type. The message clears itself as soon as you fix the last field it was complaining about on that row — you do not need to wait for it to time out.
 
-For auto-save, the pager, **Add row**, and Tab navigation move on immediately, letting the save continue in the background. A row that fails validation does not stop you from moving: its values and error markers stay on that row, and the message below the command bar lists it with **Go to row** until you fix it. Save, **Add row**, and Refresh still refuse to write an invalid row. A row whose background save fails is reported with persistent row status and grid feedback, including **Go to row** and **Retry save**; **Go to row** reaches the row on whatever page it is on. A save that takes an unusually long time to be acknowledged by a form script is reported the same way — as a persistent, retryable row status rather than a pop-up that interrupts what you are doing. Host form workflows that open, close, submit, or confirm a form remain outside the grid's control.
+For auto-save, the pager, **Add row**, and Tab navigation move on immediately, letting the save continue in the background. A row that fails validation does not stop you from moving: its values and error markers stay on that row, and it is listed under **Issues** until you fix it. Save, **Add row**, and Refresh still refuse to write an invalid row. A new row that only default values or a form script have filled in is not auto-saved; it is saved once you edit it (or a form script saves it). Host form workflows that open, close, submit, or confirm a form remain outside the grid's control.
+
+#### The Save button
+
+The **Save** button shows where a save has got to:
+
+| Label | Meaning |
+|-------|---------|
+| **Save** | There are changes to save. When there are none, the button is disabled and its tooltip says so. |
+| **Checking changes…** | The grid is checking every changed row, and any form-script save handlers are running. Nothing has been written yet. |
+| **Saving 1 row…** / **Saving N rows…** | The changes are being written to Dataverse. |
+| **Refreshing…** | The grid is reloading the saved rows. |
+| **All saved** | Everything was saved. The button returns to a disabled **Save** after a few seconds. |
+
+**Save is all or nothing.** Before writing anything, **Save** checks every row you changed — on every page, not just the one you are looking at. It checks for empty required fields, invalid values, errors raised by a form script, rows you do not have permission to update, and rows whose earlier save could not be confirmed. If any row has a problem, **nothing** is saved: the problem cells are marked, and the message **Nothing was saved. Fix issues in N rows, then save again.** appears below the command bar for five seconds, and the rows stay listed under **Issues** until you fix them. The rows that had no problem are not saved on their own either — not even by auto-save — until you edit a row again or click **Save** again. Values a form script writes while the grid is checking are checked too, before anything is written.
+
+**Rows being saved are locked.** While a row is being checked or saved, its cells are greyed out and the row has a light blue tint. You cannot type into it or delete it until the save finishes; other rows stay editable.
+
+#### Issues
+
+When rows need your attention, an amber **Issues (N)** button appears on the toolbar. It lists each row with what is wrong: a required field that is empty, an invalid value, a save that failed, a save whose result could not be confirmed, or values that could not be refreshed after a save. Each entry offers the actions that apply:
+
+- **Go to row** — takes you to the row on whatever page it is on, expanding its group if it is collapsed.
+- **Go to field** — puts the cursor in the field that needs fixing.
+- **Show row** — shown when the search hides the row; clears the search so you can reach it.
+- **Retry save** — tries the same values again.
+- **Check save result** — for a new row whose save could not be confirmed, checks whether it was created, without creating it a second time.
+- **Refresh displayed values** — re-reads a saved row whose displayed values could not be refreshed. It does not write anything.
+
+Each row also shows its save status in the row-action column (for example **Save failed**), whether auto-save is on or off. A row whose save failed also has a red tint.
+
+If you try to leave or reload the page while a row is still saving, failed to save, could not be confirmed, is waiting after a blocked Save, or holds a value the grid could not accept, the browser asks you to confirm first, so unsaved work is not lost by accident.
 
 **Clear the search before saving.** While a term is in the search box, **Save** is disabled — hover it and the grid explains why: rows hidden by the filter may have unresolved errors, and saving while they are out of view would commit problems you never had the chance to see. Clear the search and **Save** is available again. This is the same rule as **Add row**, below.
 
@@ -94,6 +125,8 @@ On a grid with no rows at all you can also just click anywhere in the empty grid
 Select the row's checkbox, then click **Delete** on the toolbar. You will be asked to confirm, and the grid refreshes once you do.
 
 Removing an unsaved row also clears that row's validation messages. Errors belonging to other rows remain visible.
+
+A row cannot be deleted while it is being saved, or while the grid could not confirm whether it was created — the grid tells you why. Wait for the save to finish, or use **Check save result** under **Issues** first.
 
 ### Selecting rows
 
@@ -126,6 +159,7 @@ Open the **More** (**…**) menu on the grid's command bar and choose **Export t
 - An Excel export writes real number, currency and date cells where possible, so totals and sorting work in the workbook without retyping. It also includes a visible **Instructions** sheet explaining the editing rules and the colour legend.
 - An Excel export carries hidden information identifying each record and the source table. Leave hidden rows, columns and sheets in place — they are what lets a later import match your edits back to the right records. Hidden content is not protection: anyone who receives the file can still read it.
 - A row you added in the grid but have not saved yet exports without that record identity.
+- Each column checks what you type into it, by its data type: whole-number, decimal and currency columns accept only numbers within the column's own minimum and maximum, and date columns accept only dates. Excel refuses anything else as you type it. Text and lookup columns accept any value, and choice and Yes/No columns offer their drop-down list.
 - The menu offers Excel only. A CSV command is not exposed on this build.
 
 ### Editing in Excel and importing back
@@ -224,6 +258,21 @@ The group headings always show the same set of totals as the footer, including f
 
 When the screen is configured with footer columns, the totals row sits beneath the grid. The function (sum, average, minimum, maximum, count) is set by the maker per column.
 
+### Coloured cells and rows
+
+Some grids colour cells, or whole rows, according to what is in them — an over-ordered quantity in
+red, a cancelled line in grey. The colours come from rules your administrator configured for that
+grid. They are a reading aid: they never change a value, never block an edit, and never affect what
+is saved.
+
+Colours update as you type. A cell you correct loses its colour immediately, without saving first.
+
+Two things temporarily replace a colour, and both put something more urgent in its place:
+
+- A cell with a validation error shows the error instead of its colour, until you fix the value.
+- A row carrying a message, or one whose save has failed, is tinted for that message. Its colours
+  come back once the message is cleared or the row saves.
+
 ### Paging and grid height
 
 The grid loads its data once and pages through it entirely in your browser — moving between pages does not reload the grid. The pager offers **First, Previous, Next, Last** buttons, the current page, and a record range (e.g. "1 - 25 of 500"). Page size follows the "Maximum number of rows" the maker configured for that view. A view with more than 5,000 matching records only loads the first 5,000.
@@ -257,9 +306,13 @@ Quick View grids are display-only — you cannot edit, sort, or filter inside th
 Either the column is configured as read-only, or the row's status puts the whole row into read-only mode (for example, a closed/completed record). Read-only cells show a light-gray box (full height, even when empty) and a normal cursor, so you can tell at a glance which cells you can edit. Ask your administrator to unlock it if needed. Numeric and currency columns stay right-aligned whether editable or read-only; every other column type stays left-aligned in both states.
 
 **Why didn't my change save?**
-Look for a red border on a cell or a banner at the top. The grid will not save a row with invalid values. Fix the highlighted cells and save again.
+Look for a red border on a cell, the amber **Issues** button on the toolbar, or a message below the command bar. The grid will not save a row with invalid values, and a toolbar **Save** saves nothing while any changed row has a problem. Fix the highlighted cells and save again.
 
-When a background save fails, the row shows **Save failed** and a persistent message identifies the row. You can continue editing another independent row without an error dialog interrupting typing. Choose **Go to row** to correct the failed row, or **Retry save** to try the same values again. Moving between rows does not repeatedly retry unchanged failed values. The message clears when the save succeeds or the changes are discarded. A hidden row remains listed; clear the search or expand its group before navigating to it. This same persistent, retryable status is also how an unusually slow save is reported — whether it is one row auto-saving or you clicked the toolbar **Save** to commit several rows at once — rather than a pop-up interrupting your work.
+When a save fails, the row shows **Save failed** and appears under **Issues** on the toolbar. You can continue editing another independent row without an error dialog interrupting typing. Choose **Go to row** to correct the failed row, or **Retry save** to try the same values again. Both work wherever the row is: on another page, inside a collapsed group, or hidden by the search (choose **Show row** first). Moving between rows does not repeatedly retry unchanged failed values. The entry clears when the save succeeds or the changes are discarded. A save that a form script takes unusually long to acknowledge is reported the same way — nothing is written, and **Retry save** tries again — rather than a pop-up interrupting your work.
+
+If you clicked **Save** and the message says **Nothing was saved**, one or more changed rows have a problem. Choose **View issues** to see which rows and why, fix them, and save again.
+
+If the message says **Changes saved. Some displayed values couldn't be refreshed.**, your changes were saved but the grid could not re-read them. Choose **Refresh displayed values** under **Issues** to load them again.
 
 If the grid cannot confirm whether a new row was created after a connection error, it keeps the changes pending. Choose **Check save result** to check for that same row. It will not automatically create a replacement while the result remains uncertain. Keep your entered values before refreshing or discarding, and confirm the original row's status before adding a replacement. Discarding local changes does not reverse a request the server has already accepted.
 
@@ -305,6 +358,7 @@ Start with a minimal configuration and add properties as needed.
 | Lock by status | `readOnlyStatus = "2, 5"` | Statecodes/statuscodes that mark the whole row read-only |
 | Calculate columns | `calculationFormulas = "{tot}={qty}*{price}"` | Targets must be writable; operators: `+ - * /` |
 | Roll up to parent | `parentUpdateFormulas = "{p_tot}={c_tot}:sum"` | Previews update in parent form memory; persistence follows parent save/submission settings |
+| Colour by value | `conditionalFormatRules = {"col":{"format":[…]}}` | JSON. Colours cells, and whole rows through the `$row` section. Rules never change data |
 
 Grouping is always available — no property is required. Users initiate grouping from each column header's menu ("Group by this column"). The **Grouped by** chip on the command bar provides **Expand all**, **Collapse all**, and **Remove** controls. Group headings reuse `footerAggregateColumns`, so configuring footer totals is what gives users per-group subtotals — there is no separate per-group setting.
 
@@ -340,13 +394,15 @@ The grid validates a row **before** it runs `addOnSave`. If a required field is 
 | Complete asynchronous work before writing an already-valid row | `addOnSave` |
 | React after a row has been committed | `addOnRowSave` |
 
-In an asynchronous handler, use `await cell.setValue(value)` and let the handler return its Promise. Starting the call without awaiting it does not make the save wait for that value. A missing cell or failed acknowledgement needs explicit error handling; do not assume the value was applied. Programmatic `row.save()` validates and writes without invoking `addOnSave`. See `yanagrid-events.md` for handler examples and acknowledgement details.
+In an asynchronous handler, use `await cell.setValue(value)` and let the handler return its Promise. Starting the call without awaiting it does not make the save wait for that value. A missing cell or failed acknowledgement needs explicit error handling; do not assume the value was applied. Programmatic `row.save()` validates and writes without invoking `addOnSave`. Work only on the rows the save writes, listed in `eventContext.data.rows` (since v1.7.0): a value your handler changes on any other row makes a **Save** write that row too. See `yanagrid-events.md` for handler examples and acknowledgement details.
 
 ### Designing for end users
 
 - Keep visible columns to a useful minimum — the bound view determines them. Edit the view, not the control.
 - Mark columns that should never be edited as read-only at the **column** level (Dataverse), not at the grid level when possible — that ensures consistency across all surfaces.
 - If parent rollups depend on a child column, make sure that child column is required or has a sensible default. A null source breaks `sum` / `avg`.
+- Use colour as a second signal, not the only one. A reader who cannot distinguish the fill still needs the row to make sense — pair a colour rule with a column that states the same thing, and prefer the built-in presets, which are pale fills with readable text of the same family.
+- Keep row colouring for conditions that describe the whole record ("cancelled", "overdue"). Anything about one value belongs on that value's column, where it is easier to explain.
 - Avoid stacking too many features on one form. Auto-save + complex calculations + parent updates is powerful but adds latency on every row commit.
 
 ### Quick View toolbar setup
@@ -385,6 +441,11 @@ Use `CurrentRecordId` and `CurrentUserId` placeholders in filter conditions to k
 | 19 | Subscribe to `addOnSelectionChange`, select and clear rows, then confirm `getSelection()` returns the same effective selection |
 | 20 | With an asynchronous `addOnSave` handler, leave two edited rows quickly — each row saves once with its own handler-written values |
 | 21 | With auto-save on and a row still saving, click Add row on a full page — the new row lands on the next page with the cursor in its first editable cell, without waiting |
+| 22 | Change two rows, leave a required field empty in one, click Save — nothing is written, Issues lists that row, and fixing it then saving writes both rows |
+| 23 | Click Save with a slow form-script save handler — Save shows Checking changes…, the rows are locked, then Saving, then All saved |
+| 24 | Make a save fail (for example, a server error), then choose Retry save under Issues — the row saves without a duplicate record |
+| 25 | Colour rules paint the intended cells and rows, and clear as soon as the value stops matching |
+| 26 | A deliberately broken rule is skipped, the grid still works, and the details dialog names it |
 
 ### Support
 
@@ -402,4 +463,4 @@ For issues, behavior questions, or feature requests, contact the Technosoft DMS 
 
 ---
 
-> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-manual.md` for plugin version 1.6.2.
+> **Bundle metadata** — generated 2026-09-30 from `.public-docs/yanagrid-manual.md` for plugin version 1.7.0.

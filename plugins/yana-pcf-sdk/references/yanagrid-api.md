@@ -14,7 +14,7 @@ The JS SDK provides programmatic event subscription and cell manipulation from f
 
 Since **v1.5.0 the SDK ships inside the control bundle**. The control publishes `window.top.YanaEditableGrid` itself when it initializes, and signals readiness through the `gridEvent` output property. Consuming the grid requires **no Yana-specific setup**: bind the control, write your own form script.
 
-**Save-event ordering:** validation runs before `addOnSave`. Set required new-row defaults in `addOnNew` and values derived from edits in `addOnChange`. An invalid row never reaches `addOnSave`; use it only for work on an already-valid row and await asynchronous `cell.setValue()` calls. Programmatic `row.save()` does not invoke `addOnSave`. See the event reference and the user manual's **Choosing form-script events** section.
+**Save-event ordering:** validation runs before `addOnSave`. Set required new-row defaults in `addOnNew` and values derived from edits in `addOnChange`. An invalid row never reaches `addOnSave`; use it only for work on an already-valid row and await asynchronous `cell.setValue()` calls. Programmatic `row.save()` does not invoke `addOnSave`. Since v1.7.0, `eventContext.data.rows` lists the rows the save writes; change values only on those rows, not on every row of `table`. See the event reference and the user manual's **Choosing form-script events** section.
 
 ### Consuming the grid without web resoures Technosoft.Yana.Grid.js
 
@@ -119,6 +119,7 @@ See `yanagrid-events.md` for the full JS SDK reference.
 | `calculationFormulas` | SingleLine.TextArea | no | `""` | Comma-separated `{target} = {source1} op {source2}` formulas. |
 | `readOnlyColumns` | SingleLine.TextArea | no | — | Comma-separated column logical names to lock. |
 | `readOnlyStatus` | SingleLine.TextArea | no | — | Statecode/statuscode values that mark the entire row read-only. |
+| `conditionalFormatRules` | Multiple | no | `""` | JSON rules that colour cells, and whole rows, from the values in them. |
 | `parentUpdateFormulas` | SingleLine.TextArea | no | `""` | Aggregate child rows into parent form fields. |
 | `enableQuickView` | TwoOptions | no | `false` | Quick View: Enable. |
 | `quickViewTitle` | SingleLine.Text | no | `"Quick View"` | Quick View: Title. |
@@ -185,6 +186,112 @@ Comma-separated list of `statuscode` values; when the row's `statuscode` matches
 
 - **Format**: integer option-set values, e.g. `"2, 5, 100000001"`
 - **Behavior**: applied per-row at render time. Status changes require a refresh to update read-only state.
+
+### `conditionalFormatRules`
+
+Colours cells and whole rows from the values in them, without a form script. The property holds one
+JSON object: each key is a column logical name, plus an optional reserved `$row` key that styles
+entire rows.
+
+```json
+{
+  "xts_quantityorder": {
+    "format": [
+      { "when": "> {xts_quantityavailable}", "background": "danger", "text": "danger", "emphasis": "bold", "stopIfTrue": true },
+      { "when": "blank", "background": "warning" }
+    ]
+  },
+  "$row": {
+    "format": [
+      { "field": "statuscode", "when": "= 4", "background": "info", "text": "info", "stopIfTrue": true },
+      { "field": "xts_duedate", "when": "< today", "background": "danger" },
+      { "isElse": true, "text": "#6b7280" }
+    ]
+  }
+}
+```
+
+**Column rules** style that column's own cell. **Row rules** live in one ordered `$row` list and
+style every cell of the rows they match — use them for whole-row signals such as "this order is
+cancelled", which previously needed a form script.
+
+#### Rule keys
+
+| Key | Values | Notes |
+|-----|--------|-------|
+| `when` | a condition (below) | Exactly one of `when` or `isElse` per rule. |
+| `isElse` | `true` | Catch-all: matches only when no earlier rule in the list did. |
+| `field` | column logical name | `$row` rules only. The column the rule's condition compares. |
+| `background` | preset name or `#rrggbb` | Cell/row fill. |
+| `text` | preset name or `#rrggbb` | Text colour. |
+| `emphasis` | `"bold"` or `"italic"` | One or the other, not both. |
+| `stopIfTrue` | `true` | Stop evaluating the rest of the list once this rule matches. |
+
+Presets are `danger`, `warning`, `info` and `success`. Each is a matched pair — a pale fill with a
+readable colour of the same family — so `"background": "danger"` and `"text": "danger"` are designed
+to be used together. Any other colour is a six-digit `#rrggbb` value.
+
+#### Conditions
+
+| Form | Example | Matches when the compared value… |
+|------|---------|----------------------------------|
+| comparison | `"= 4"`, `"!= 4"`, `"> 10"`, `">= 10"`, `"< 100"`, `"<= 100"` | compares that way |
+| date | `"< today"` | falls before today (whole days, in the user's calendar) |
+| blank | `"blank"`, `"not blank"` | is empty / is not empty |
+| range | `"between 1 and 5"` | falls inside the range, inclusive |
+| list | `"in [1, 4]"`, `"in [\"A\", \"B\"]"` | equals one of the listed values. A list holds numbers and quoted text only. For a Yes/No column, `1`, `\"1\"` and `true` all match Yes and `0`, `\"0\"` and `false` all match No, in lists and in `=` / `!=`. For a Choice column, `3` and `\"3\"` both match the option whose value is 3, here and in `=` / `!=`; comparisons and ranges (`"> 2"`, `"between 2 and 4"`) order a Choice column by its option value. A text column is never treated as a number: `"= 7"` does not match the text `007` |
+| text | `"contains \"urgent\""` | contains that text |
+
+The compared value is the rule's own column — the column the rule is written under, or the one its
+`field` names. Any other column is referenced as `{logicalname}`, on either side:
+`"> {xts_quantityavailable}"`, or `"{xts_quantityorder} > {xts_quantityavailable}"`.
+
+A `$row` rule that names no `field` must reference its columns explicitly, because the short forms
+above have no column to compare against. Such a rule is skipped and reported rather than silently
+never matching.
+
+Column names, and `{references}`, match regardless of case.
+
+#### How rules resolve
+
+Each list is read top to bottom. The first rule that matches wins each style property
+independently, so a later rule can still supply a property no earlier one set; `stopIfTrue` ends the
+list there. Rules are evaluated live against the values on screen, including unsaved edits and rows
+you have added but not saved.
+
+When several things want the same cell, the order is:
+
+1. a validation error on the cell
+2. styling set by a form script at cell width (the `Cell` setters), a row notification, and the
+   grid's own save-failure marker
+3. the column rule for that cell
+4. the row highlight (`setRowHighlight`)
+5. styling set by a form script at **row** width (the `Row` setters, since v1.7.0)
+6. the `$row` rule for that row
+7. the grid's own row striping, hover and selection
+
+Each of those claims only the properties it sets, so a rule's text colour and emphasis survive a
+notification that only repaints the background — and the rule's fill returns by itself as soon as the
+notification is cleared. On a highlighted row, a cell whose column rule sets a background keeps that
+background; the other cells of the row show the highlight.
+
+The principle is that the narrower statement wins, and that at equal width an explicit script call
+wins over a configured rule. That is why a script's **row** style sits below a **column** rule: the
+rule is the narrower of the two. It also means a script can colour a row without silencing the rules
+an implementer wrote to flag individual cells in it — which a loop calling the `Cell` setters on
+every cell of the row cannot do, because that produces cell-width overrides at rank 2.
+
+#### When a rule cannot be used
+
+A configuration that cannot be read never breaks the grid: the offending rule is skipped and its
+valid neighbours still run. Nothing is shown in the grid; each skipped rule is written to the
+browser console as a warning prefixed `[ConditionalFormatConfigService]`, naming the rule and why it
+was skipped.
+
+Warned cases are invalid JSON, an unusable colour or emphasis, a condition that does not parse, and a
+`$row` rule that needs a `field` and has none. A column name or `{reference}` that matches no column
+in the view is not warned — its rules simply never run — so when a rule seems to have no effect and
+the console is quiet, check the logical names it uses.
 
 ### `gridEvent` (output, v1.5.0)
 
@@ -385,15 +492,17 @@ These are the runtime guarantees the control offers. Integrators can rely on the
 3. If `autoSaveRecord=true`, the grid saves the validated row to Dataverse via WebAPI.
 4. Grid-owned movement between existing rows (same-page click or keyboard movement, the pager, and **Go to row**) does not wait for step 3 or block on the outgoing row's validation. **Add row** remains guarded by required-field validation.
 5. On success: `parentUpdateFormulas` recompute and write to parent form fields.
-6. On background save failure: persistent row status and grid feedback surface; entered values remain available for correction or retry.
+6. On background save failure: persistent row status and an entry in the toolbar **Issues** list surface; entered values remain available for correction or retry.
+
+A toolbar **Save** is all or nothing: it checks every changed row before writing and writes nothing while any of them has a problem. See `yanagrid-events.md` for how `addOnSave` and `row.save()` behave during it.
 
 Since v1.6.0, each row waits for its own asynchronous `addOnSave` handler. Completion of another row's handler cannot release that wait, and repeated save triggers for the same row share its in-flight save instead of starting parallel creates or updates. Values written by the handler therefore stay with the row being saved.
 
-Auto-save validates the row before invoking `addOnSave` or writing to Dataverse. Validation failures retain the edits and show cell indicators and an in-grid message that retracts as soon as the row's last blocking field is fixed, or otherwise dismisses after five seconds; repeating the failure restarts that timer. Since v1.6.2, the save-event budget is 120 seconds, and an expiry no longer opens a dialog — it surfaces the same way a background Dataverse save failure does. Background Dataverse save failures appear as persistent row status and grid feedback without interrupting another row being edited. An unchanged failed row waits for **Retry save**; changing its values permits another automatic attempt. **Check save result** reconciles an uncertain create without replaying its write. **Go to row** moves focus only when selected and respects row validation.
+Auto-save validates the row before invoking `addOnSave` or writing to Dataverse. Validation failures retain the edits and show cell indicators and an in-grid message that retracts as soon as the row's last blocking field is fixed, or otherwise dismisses after five seconds; repeating the failure restarts that timer. Since v1.6.2, the save-event budget is 120 seconds, and an expiry no longer opens a dialog — it surfaces the same way a background Dataverse save failure does. Background Dataverse save failures appear as persistent row status and an entry in the toolbar **Issues** list without interrupting another row being edited. An unchanged failed row waits for **Retry save**; changing its values permits another automatic attempt. **Check save result** reconciles an uncertain create without replaying its write. **Go to row** moves focus only when selected and respects row validation.
 
 After a successful auto-save, the grid retrieves only the saved record in the background to display server-generated values such as Owner labels. This read preserves the current page and other pending edits. Transient read failures have bounded retries; a failed display refresh does not undo the successful write. Auto-save does not fire `addOnLoad`; use `addOnRowSave` for logic that runs after each committed row. That event precedes the background display refresh.
 
-Moving between existing rows is allowed even when the outgoing row has validation errors, including when movement crosses a page. Valid editor drafts are committed through the normal cell transaction before they leave the rendered page; invalid text and its field feedback remain in grid memory for the lifetime of the control, including while paging or virtualized rows unmount and remount. Invalid drafts are not written. Saving another valid row remains possible while an invalid row is retained. **Add row** continues to check required fields before creating a row. A row whose background save fails after the grid has moved on is reported through persistent row status and grid feedback, with **Go to row** and **Retry save** available; **Go to row** reaches the row on whatever page it is on. Host-level workflows that open, close, submit, or confirm a form — including **Save & Close**, **Submit**, and **Confirm** — remain outside the grid's command contract; the grid does not intercept or guarantee them.
+Moving between existing rows is allowed even when the outgoing row has validation errors, including when movement crosses a page. Valid editor drafts are committed through the normal cell transaction before they leave the rendered page; invalid text and its field feedback remain in grid memory for the lifetime of the control, including while paging or virtualized rows unmount and remount. Invalid drafts are not written. Saving another valid row remains possible while an invalid row is retained. **Add row** continues to check required fields before creating a row. A row whose background save fails after the grid has moved on is reported through persistent row status and an entry in the toolbar **Issues** list, with **Go to row** and **Retry save** available; **Go to row** reaches the row on whatever page it is on. Host-level workflows that open, close, submit, or confirm a form — including **Save & Close**, **Submit**, and **Confirm** — remain outside the grid's command contract; the grid does not intercept or guarantee them.
 
 ### Refresh behavior
 
@@ -462,6 +571,12 @@ Both auto-save and the grid's Save flow validate before `addOnSave`, then write 
 <property name="readOnlyStatus" value="2, 100000001" />
 ```
 
+### Colour rows and cells by value
+
+```xml
+<property name="conditionalFormatRules" value='{"$row":{"format":[{"field":"statuscode","when":"= 4","background":"info","text":"info","stopIfTrue":true}]},"xts_quantityorder":{"format":[{"when":"> {xts_quantityavailable}","background":"danger","text":"danger","emphasis":"bold"}]}}' />
+```
+
 ### Enable the Quick View toolbar
 
 No manifest change required. Seed an `xts_pluginconfiguration` record for the entity (see `yanagrid-install.md` → Quick View configuration).
@@ -494,6 +609,9 @@ No manifest change required. Seed an `xts_pluginconfiguration` record for the en
 - `readOnlyStatus` is checked against `statuscode` only; custom status fields are not supported.
 - The Quick View toolbar button is data-driven (presence of `xts_pluginconfiguration`); there is no per-form manifest override.
 - Paging is **client-side only**, with a **5,000-record** load cap — a view returning more records than that is truncated at the cap. There is no export feature in this release.
+- A formatting condition is one comparison or one of the listed forms; there is no `and` / `or`. Separate rules in a list give you OR. An AND needs a calculated column that already combines the two values.
+- Formatting is evaluated over the records currently loaded, and does not colour group-header rows or the footer aggregate row.
+- Excel export carries rule colours, and only rule colours. A row tinted at that moment by a script notification or a save failure still exports its rule colour, and a reference-only column keeps its grey in the file even on a coloured row.
 - Auto-save barriers cover commands owned by the grid. Host-level workflows that open, close, submit, or confirm a form — including **Save & Close**, **Submit**, and **Confirm** — are not intercepted or guaranteed by the grid.
 
 ---
@@ -524,7 +642,8 @@ Save failures surface the underlying Dataverse error message verbatim (e.g. requ
 
 | Version | Status | Namespace |
 |---------|--------|-----------|
-| 1.6.2 | Current — **Add row** and grid-owned page changes no longer wait for a background save, and a row with invalid input no longer blocks moving between rows or pages (it is still never written); a failed background save stays recoverable through **Go to row** and **Retry save**. Otherwise the v1.6.1 feature set | `Technosoft.DMS.XRM.CustomControl.Grid` |
+| 1.7.0 | Current — conditional formatting for cells and whole rows (`conditionalFormatRules`) with Excel export of rule colours; all-or-nothing Save with save progress, row protection and the **Issues** list; `addOnSave` `data.rows`; row styling setters; delayed loading feedback; one message style; Excel data validation by column type. Otherwise the v1.6.2 feature set | `Technosoft.DMS.XRM.CustomControl.Grid` |
+| 1.6.2 | Previous — **Add row** and grid-owned page changes no longer wait for a background save, and a row with invalid input no longer blocks moving between rows or pages (it is still never written); a failed background save stays recoverable through **Go to row** and **Retry save**. Otherwise the v1.6.1 feature set | `Technosoft.DMS.XRM.CustomControl.Grid` |
 | 1.6.1 | Previous — persistent asynchronous auto-save feedback, stable retry and uncertain-create recovery, page-save barriers, single-row hydration with correct choice/list cell types, filtered-lookup Load More paging, and the v1.6.0 feature set | `Technosoft.DMS.XRM.CustomControl.Grid` |
 | 1.6.0 | Previous — Excel round trip, row-selection events and `getSelection()`, group subtotals, web-resource icons, save isolation, performance and accessibility improvements | `Technosoft.DMS.XRM.CustomControl.Grid` |
 | 1.5.0 | Previous — bundled zero-setup SDK; custom cell rendering, configurable commands/read-only grid, custom command-bar buttons, data-change events, runtime option-set filtering; grouping always available (`enableGroupBy` retained, hidden, defaults to `true`); client-side paging (`defaultPageSize` removed); drag-to-reorder columns; coloured choice values; new `gridEvent` output | `Technosoft.DMS.XRM.CustomControl.Grid` |
@@ -544,4 +663,4 @@ See `yanagrid-releases.md` for full version history and migration notes.
 
 ---
 
-> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-api.md` for plugin version 1.6.2.
+> **Bundle metadata** — generated 2026-09-30 from `.public-docs/yanagrid-api.md` for plugin version 1.7.0.

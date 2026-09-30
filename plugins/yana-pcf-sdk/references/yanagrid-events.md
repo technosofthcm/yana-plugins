@@ -112,6 +112,7 @@ function handler(instance, eventContext) { ... }
         parentEntity: object,   // host form entity reference
         table: EditableGrid,    // the grid instance (with all rows)
         row?: Row,              // present for row-level events
+        rows?: Row[],           // addOnSave only: the rows this save writes (since v1.7.0)
         cell?: Cell             // present for cell-level events
     }
 }
@@ -155,6 +156,8 @@ grid.removeOnNew(handler);
 ```
 
 **Trigger:** fires when the user adds a new row to the grid via the **+ New** button (inline row creation). Fires before the row is saved.
+
+**Values your handler sets do not make the row a save candidate.** A new row that only your `addOnNew` handler (or a grid default such as the parent record, the default currency or a required choice's default) has filled is a placeholder: it is not auto-saved, not included when the user clicks **Save**, and does not stop a Refresh. It becomes a candidate as soon as the user edits one of its cells, or when your script calls `row.save()` for it.
 
 **`eventContext.data` shape:**
 
@@ -252,11 +255,14 @@ grid.removeOnSave(handler);
 | Property | Present | Description |
 |----------|---------|-------------|
 | `parentEntity` | always | Host form entity reference. |
-| `table` | always | `EditableGrid` with all rows. |
-| `row` | auto-save only | The `Row` being saved. Grid Save is table-scoped; use `table.getRows()` there. |
+| `table` | always | `EditableGrid` with all rows, including rows this save does not write. Use it to read values across rows. |
+| `row` | auto-save only | The `Row` being saved. Absent on the grid's **Save**. |
+| `rows` | always (since v1.7.0) | The rows this save writes. On auto-save it holds the one row being saved (the same object as `row`). On the grid's **Save** it holds every row with changes when your handler starts. Rows without changes are not included. Each entry is the same object as in `table`. |
 | `cell` | no | — |
 
-**Completion semantics (since v1.6.2):** the grid waits up to **120 seconds** for the handler to complete (await resolution). After successful completion, the grid reads the latest staged values and continues saving. If the handler throws an ordinary error, the grid surfaces an error dialog via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack, then continues. An SDK acknowledgement timeout that propagates from an awaited call is different: it stops that save attempt with a persistent row-save diagnostic instead of treating the handler as successful. If the handler does not complete within 120 seconds, the wait rejects with a typed save-event timeout error. Neither timeout opens a dialog; the row's claim is released and persistent feedback offers **Go to row** and recovery. A definite pre-write failure offers **Retry save**; an uncertain result offers **Check save result**. Edits remain available for recovery.
+**Change values only on `rows`.** A value your handler changes on another row marks that row as changed, and the grid's **Save** then writes it too, even though the user never edited it. Before v1.7.0 there was no `rows`, and handlers that looped over `table.getRows()` on a **Save** changed, and wrote, every row of the grid. `rows` is provided by the bundled SDK; a form that still loads the pre-1.5.0 `xts_Technosoft.Yana.Grid` library does not receive it.
+
+**Completion semantics (since v1.6.2):** the grid waits up to **120 seconds** for the handler to complete (await resolution). After successful completion, the grid reads the latest staged values and continues saving. If the handler throws an ordinary error, the grid surfaces an error dialog via `parent.Xrm.Navigation.openErrorDialog` with the error message and stack, then continues. An SDK acknowledgement timeout that propagates from an awaited call is different: it stops that save attempt with a persistent row-save diagnostic instead of treating the handler as successful. If the handler does not complete within 120 seconds, the wait rejects with a typed save-event timeout error. Neither timeout opens a dialog; the row's claim is released and persistent feedback offers **Go to row** and recovery. Because nothing was written when the handler did not complete, both timeouts are reported as a definite failure that offers **Retry save**. **Check save result** appears only for a new row whose earlier create could not be confirmed; it looks the record up and never creates it a second time. Edits remain available for recovery.
 
 Required defaults must already exist before this event. Populate new-row defaults in `addOnNew`, and derive dependent values in `addOnChange`; `addOnSave` cannot fill a required field to rescue a row that failed validation.
 
@@ -264,11 +270,8 @@ Always return the asynchronous handler's Promise and `await cell.setValue(value)
 
 ```js
 grid.addOnSave(async function (instance, context) {
-    // Auto-save supplies one row; grid Save supplies the table.
-    const rows = context.data.row
-        ? [context.data.row]
-        : context.data.table.getRows();
-    for (const row of rows) {
+    // The rows this save writes: one row on auto-save, the changed rows on the grid's Save.
+    for (const row of context.data.rows) {
         // Replace with an optional text column included and visible in your view.
         const cell = row.getCell("xts_description");
         if (!cell) throw new Error("The description column is unavailable.");
@@ -280,6 +283,12 @@ grid.addOnSave(async function (instance, context) {
 **Concurrent saves (since v1.6.0):** each row waits for its own handler invocation. One row's handler finishing cannot release another row's save, and repeated triggers for the same row reuse its in-flight save instead of issuing parallel creates or updates. Values written by an asynchronous handler are included in the row that invoked it.
 
 Validation failures are shown as text below the command bar, with the affected cells highlighted, including when the user explicitly clicks **Save**. They do not open a host validation dialog and do not invoke `addOnSave`.
+
+**The Save button saves all or nothing.** When the user clicks **Save**, the grid checks every row that has changes before it sends anything, including text still in an editor that is not valid yet. If any of those rows has a problem, nothing is saved, `addOnSave` is not invoked, and one message says how many rows need attention. Rows without changes never stop the save. After `addOnSave` completes, the grid checks the final values again, so a value set by your handler that makes a row invalid also stops the save before any write. Refreshing the grid with unsaved changes follows the same rule.
+
+**`row.save()` while the grid's Save is running.** Calling `row.save()` while the **Save** flow is in progress (typically from your `addOnSave` handler) does not start a separate write. A row with changes becomes part of that Save, and the returned Promise resolves at once. A resolved Promise confirms that the grid accepted the request, not that the row was written: if that Save then stops, for example because another row is invalid, nothing is written for this row either. Waiting for the outcome instead would deadlock, because the Save is itself waiting for your handler.
+
+On the grid's **Save**, `rows` can include changed rows on other pages. Only rows on the current page can apply a `setValue` (see **Timeout rejection** under `setValue` details), so an update to a row on another page rejects after 6 seconds and stops the whole Save.
 
 > An ordinary error thrown from an `addOnSave` handler surfaces an error dialog and then save proceeds. SDK acknowledgement timeouts are handled separately, as described below. To perform async validation before save, use `cell.setNotification()` from an `addOnChange` handler to surface field-level messages before the save is attempted.
 >
@@ -453,7 +462,7 @@ Obtained via `window.top.YanaEditableGrid.getEditableGrid(instance, gridId)`. Re
 | `removeOnQuickView` | `(handler) → void` | Unsubscribe. |
 | `addOnChange` | `(columnName: string, handler) → void` | Subscribe to column value changes. |
 | `removeOnChange` | `(columnName: string, handler) → void` | Unsubscribe. |
-| `addOnSave` | `(handler) → void` | Subscribe to row-save lifecycle (fires *before* save). |
+| `addOnSave` | `(handler) → void` | Subscribe to row-save lifecycle (fires *before* save). `eventContext.data.rows` lists the rows the save writes (since v1.7.0). |
 | `removeOnSave` | `(handler) → void` | Unsubscribe. |
 | `addOnRowSave` | `(handler) → void` | Subscribe to single-row commit (fires *after* a row saves). (since v1.5.0) |
 | `removeOnRowSave` | `(handler) → void` | Unsubscribe. |
@@ -619,11 +628,17 @@ A `Row` represents a single grid row returned from `getRows()`, `getRow()`, or a
 | `setDisabled(disabled)` | `(disabled: boolean) → void` | Disable (`true`) or re-enable (`false`) all editable cells in the row. Respects system-disabled rules. |
 | `setReadOnly(readOnly)` | `(readOnly: boolean) → void` | Make every cell in the row read-only (`true`) or restore writability (`false`). |
 | `setReadOnlyColumns(names, readOnly?)` | `(names: string[], readOnly = true) → void` | Make a subset of columns read-only (default) or writable again (`readOnly = false`). |
-| `setHighlight(highlight)` | `(highlight: boolean) → void` | Toggle the row's visual highlight. |
+| `setHighlight(highlight)` | `(highlight: boolean) → void` | Toggle the row's visual highlight. Unchanged; see **Styling (row render)** for how it relates to the row style setters. |
+| `setTextColor(color)` | `(color: string) → Row` | Text colour for the whole row (since v1.7.0). See **Styling (row render)**. |
+| `setBackgroundColor(color)` | `(color: string) → Row` | Fill colour for the whole row. See **Styling (row render)**. |
+| `setBold(bold?)` | `(bold = true) → Row` | Bold the whole row. |
+| `setItalic(italic?)` | `(italic = true) → Row` | Italicise the whole row. |
+| `setTextAlign(align)` | `('left' \| 'center' \| 'right') → Row` | Horizontal alignment for the whole row. |
+| `clearStyle()` | `() → Row` | Remove the row style set by the five setters above. |
 | `setNotification(message, options?)` | `(message: string, options?: object) → void` | Show a row-scoped notification (icon + tooltip + row tint) in the action column. Supports three severities; an `error`-type notification **blocks the row from saving**. See below. |
 | `clearNotification()` | `() → void` | Remove any row-scoped notification (icon, tint, and field borders). |
 | `save()` | `() → Promise<void>` | Save this single row; resolves once the grid acknowledges the commit (rejects on failure or after a 30s acknowledgement timeout — since v1.6.2, longer than the 6s default used by other SDK calls, allowing more time for slow writes). Triggers `addOnRowSave`. Useful when auto-save is off. |
-| `delete()` | `() → Promise<void>` | Delete this row; resolves once the grid acknowledges the removal (same 30s acknowledgement timeout as `save()`, since v1.6.2). For existing records the platform confirmation dialog is still shown. Triggers `addOnRowDelete`. |
+| `delete()` | `() → Promise<void>` | Delete this row; resolves once the grid acknowledges the removal (same 30s acknowledgement timeout as `save()`, since v1.6.2). For existing records the platform confirmation dialog is still shown. Triggers `addOnRowDelete`. Rejects without deleting while the row is being saved, and while the result of an earlier save of it could not be confirmed. |
 
 **`setNotification` options:**
 
@@ -656,6 +671,48 @@ row.setNotification("Quantity × Unit price ≠ Amount", {
 > The save is rejected with the `Validation.SaveNotificationError` message (with your notification message appended when present). Call `row.clearNotification()` to lift the block once the condition is resolved. `info` and `warning` notifications never block save — use `error` only when you genuinely want to prevent the row from being committed.
 
 This is the row-level counterpart to `cell.setNotification()`: use `error` here when the *whole row* is in an invalid state that must not be saved, and `info`/`warning` to surface non-blocking guidance.
+
+### Styling (row render, since v1.7.0)
+
+Visual overrides for a **whole row**, expressed once at row width. Every setter is **chainable** (returns the `Row`) and **merges** with the row style already applied, so a chain such as `row.setBackgroundColor("#eef2ff").setBold(true)` leaves both active and costs the grid a single update. `clearStyle()` removes the row style in one call.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `setTextColor` | `(color: string) → Row` | Text colour for every cell of the row. |
+| `setBackgroundColor` | `(color: string) → Row` | Fill colour for the row. |
+| `setBold` | `(bold = true) → Row` | Bold (`true`) or normal (`false`) text for the row. |
+| `setItalic` | `(italic = true) → Row` | Italic (`true`) or normal (`false`) text for the row. |
+| `setTextAlign` | `(align: 'left' \| 'center' \| 'right') → Row` | Horizontal alignment for the row. |
+| `clearStyle` | `() → Row` | Remove **all** row styling set through these setters, and revert to the grid defaults. Cell styling, conditional-formatting rules and `setHighlight` are untouched. Safe to call on a never-styled row. |
+
+```js
+// One call at row width — not a loop over the row's cells.
+row.setBackgroundColor("#fff4ce").setItalic(true);
+
+// Later, put the row back:
+row.clearStyle();
+```
+
+**Colour values.** Any CSS colour is accepted (`"#B00020"`, `"red"`, `"rgb(11,106,11)"`, `"var(--brand-accent)"`). In addition, the four conditional-formatting preset names — `"danger"`, `"warning"`, `"info"`, `"success"` — resolve to the same colours a conditional-formatting rule produces, so a script and a configuration can name the same colour the same way:
+
+```js
+row.setBackgroundColor("danger");   // same fill a `background: danger` rule paints
+row.setTextColor("danger");         // same text colour that rule paints
+```
+
+**Why not loop over the cells?** Applying `cell.setBackgroundColor(...)` to every cell of a row produces a *cell-level* override on each one, which outranks every conditional-formatting rule in that row — including rules written precisely to flag a cell. The row setters resolve one level lower, so a cell's own rule still shows through. Prefer them whenever the intent is "colour this row".
+
+**Precedence.** When several sources want the same visual property on one cell, the first that sets it wins:
+
+| Order | Source | Claims |
+|-------|--------|--------|
+| 1 | Validation error, `row.setHighlight()`, `row.setNotification()`, a failed auto-save | background fill |
+| 2 | `cell.setTextColor()` and the other `Cell` setters | every property it sets |
+| 3 | A **cell-scope** conditional-formatting rule | the rest |
+| 4 | `row.setTextColor()` and the other `Row` setters | the rest |
+| 5 | A **row-scope** (`$row`) conditional-formatting rule | the rest |
+
+The rule is *narrower wins*, and at equal width an explicit script call wins over a configured rule. Note the first row of the table: the runtime cues claim only the **background fill**, so a highlighted row still shows a rule's or a script's text colour and emphasis.
 
 ---
 
@@ -1027,7 +1084,8 @@ function onStatusChange(instance, eventContext) {
 }
 
 /**
- * Fired before each row save.
+ * Fired before a save, for the rows that save writes (one row on auto-save,
+ * the changed rows on the grid's Save).
  * Rejects (with error dialog) if quantity is zero.
  * Note: throwing does NOT prevent save; it surfaces an error dialog and save continues.
  * Use addOnChange + setNotification for pre-save field validation instead.
@@ -1035,15 +1093,15 @@ function onStatusChange(instance, eventContext) {
  * @param {object} eventContext
  */
 async function onBeforeSave(instance, eventContext) {
-    var row = eventContext.data.row;
-    if (!row) return;
+    var rows = eventContext.data.rows || [];
+    for (var i = 0; i < rows.length; i++) {
+        var qtyCell = rows[i].getCell("xts_quantity");
+        if (!qtyCell) continue;
 
-    var qtyCell = row.getCell("xts_quantity");
-    if (!qtyCell) return;
-
-    var qty = qtyCell.getValue();
-    if (qty !== null && qty === 0) {
-        throw new Error("Quantity must be greater than zero.");
+        var qty = qtyCell.getValue();
+        if (qty !== null && qty === 0) {
+            throw new Error("Quantity must be greater than zero.");
+        }
     }
 }
 
@@ -1223,4 +1281,4 @@ The JS SDK is versioned together with the umbrella solution `CORE Custom Control
 
 ---
 
-> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-events.md` for plugin version 1.6.2.
+> **Bundle metadata** — generated 2026-09-30 from `.public-docs/yanagrid-events.md` for plugin version 1.7.0.

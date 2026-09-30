@@ -4,6 +4,155 @@ Curated, version-by-version change history for YanaGrid. Each entry summarises u
 
 ---
 
+## v1.7.0 — September 2026
+
+**Upgrade from:** v1.6.2
+**Solution:** Managed `CORE Custom Control` (`CORECustomControl`)
+
+A feature release with two themes. **Conditional formatting** colours cells, and whole rows, from the
+values in them — configured once on the grid, with no form script — and carries those colours into
+Excel. **Predictable saving** makes the toolbar **Save** all or nothing, shows where a save has got
+to, protects a row while it is being saved, and gathers every row that needs attention under one
+**Issues** button. Around those, the grid gives consistent feedback for slow operations and one
+consistent message style, validates exported workbooks by data type, and fixes date-and-time and
+required-field defects in form-script updates. One configuration property is added, the JavaScript
+SDK gains row styling and a `rows` list on `addOnSave`, and YanaQuickView is unaffected.
+
+### New
+
+- **Conditional formatting.** The new **Conditional Format Rules** property (`conditionalFormatRules`)
+  holds JSON rules, keyed by column, that colour a cell from its value: a background, a text colour,
+  and bold or italic. A condition compares the cell with a number, quoted text, `true`/`false`,
+  `today`, or another column in the same row (`"> {xts_quantityavailable}"`), using `=`, `!=`, `>`,
+  `>=`, `<`, `<=`, `between … and …`, `in [...]`, `contains`, `blank` and `not blank`. Rules run top
+  to bottom and the first match wins each style property; `stopIfTrue` ends the list early, and an
+  `isElse` rule is a catch-all. Colours are the presets `danger`, `warning`, `info` and `success` or a
+  `#rrggbb` value. Colours update as you type, apply to read-only cells too, and never change a value,
+  block an edit, or affect what is saved. Group headings and footer totals are not coloured.
+- **Row-level conditional formatting.** A reserved `$row` section in the same property colours every
+  cell of the rows a rule matches — for whole-row signals such as "this order is cancelled" that
+  previously needed a form script. Each row rule names the column it compares with `field`. Where a
+  cell has both, its own column rule wins each property and the row rule supplies the rest.
+- **Rule problems are reported, not hidden.** A rule the grid cannot use is skipped, the other rules
+  still apply, and a warning names the column and the rule's position so the implementer can fix it.
+- **Conditional formatting in Excel.** **Export to Excel** writes the rule colours into the workbook, so
+  the file and the screen agree cell for cell. The workbook carries the colours as they stood at export;
+  it does not contain the rules themselves, so an edit made in Excel does not recolour.
+- **Row styling from script.** A row now offers `setTextColor`, `setBackgroundColor`, `setBold`,
+  `setItalic`, `setTextAlign` and `clearStyle`. They chain like the cell setters, merge with the row
+  style already applied, and a whole chain costs the grid one update — the style is expressed once at
+  row width rather than once per cell.
+- **Preset colour names in script.** The four conditional-formatting preset names — `danger`,
+  `warning`, `info`, `success` — are accepted wherever a colour is, and resolve to exactly the
+  colours a conditional-formatting rule produces, so a script and a configuration can name the same
+  colour the same way. Any CSS colour continues to work.
+- **Save is all or nothing.** Before writing anything, the toolbar **Save** checks every changed row on
+  every page — empty required fields, invalid values, errors raised by form scripts, rows you cannot
+  update, text still in an editor, and rows whose earlier save could not be confirmed. If any row has a
+  problem, nothing is written for any row, the problem cells are marked, and one message says how many
+  rows need attention. Values that form-script save handlers set while the grid is checking are checked
+  again before anything is written. Rows without changes never block a save, and refreshing with
+  unsaved changes follows the same rule.
+- **Save shows where it has got to.** The **Save** button reads **Checking changes…**, **Saving N
+  rows…**, **Refreshing…**, then **All saved** for a few seconds. It is disabled, with the reason in its
+  tooltip, when there is nothing to save or a row is still saving.
+- **A row being saved is protected.** While a row is checked or saved, its cells are greyed out with a
+  light blue tint and cannot be typed into or deleted; other rows stay editable.
+- **Issues and recovery in one place.** An amber **Issues (N)** button on the toolbar lists each row
+  that needs attention and what is wrong with it, with the actions that apply: **Go to row** (on any
+  page, expanding a collapsed group), **Go to field**, **Show row** (clears a search that hides it),
+  **Retry save**, **Check save result**, and **Refresh displayed values**. Each row also shows its own
+  save status in the row-action column, whether auto-save is on or off. Leaving or reloading the page
+  while a row is saving, failed to save, or could not be confirmed asks you to confirm first.
+- **Auto-save saves only what you asked for.** A new row filled in only by defaults or a form script is
+  not saved until you edit it, or a script saves it. After a blocked **Save**, its rows are not
+  auto-saved until you edit a row or save again.
+
+### Changes
+
+- **Feedback for slow operations, without flicker.** Every grid operation starts immediately, and its
+  loading indicator appears only if that same operation is still running after half a second, so fast
+  operations no longer flash a spinner. The indicator matches what is actually waiting: the whole grid
+  for loading, refreshing and **Save**, one row for its auto-save, the lookup list for a search or
+  **Load More**, and the export command for an Excel export — the rest of the grid stays usable. A load
+  in progress no longer shows the "no records" message.
+- **One message style.** Every grid message — a save outcome, a blocked **Save**, a refused auto-save or
+  **Add row** — now appears in the same place below the command bar with the same error, warning or
+  information icon, and stays for five seconds instead of vanishing after one or two. Once it clears,
+  the row details remain available from the **Issues** button.
+- **Exported workbooks check what you type.** An exported workbook now validates each column by its data
+  type, not only choice columns. Whole-number, decimal and currency columns accept only numbers, bounded
+  by the column's own minimum and maximum; date and date-and-time columns accept only dates. Excel
+  refuses anything else when it is typed, instead of the import rejecting the row later. Text and lookup
+  columns show their tooltip and accept any value, and choice and Yes/No columns keep their drop-down
+  list.
+- **A row style no longer silences the rules in that row.** Colouring a row through the new setters
+  resolves below a column's conditional-formatting rule, so a rule written to flag a particular cell
+  still shows through. Looping `cell.setBackgroundColor(...)` over a row keeps its existing meaning —
+  a cell-level override, which outranks that rule — so previously written scripts behave exactly as
+  before.
+- **`setHighlight` is unchanged**, including the fact that it claims only the background fill, so a
+  rule's text colour and emphasis still apply on a highlighted row.
+
+### Fixes
+
+- **A form script's date-and-time update keeps its new time.** When a script set a date-and-time cell —
+  for example, recalculating an end time from a changed duration — the cell could keep its old time,
+  and the form then recalculated the duration from that stale value. The complete requested date and
+  time is now applied, including when the cell already has a value or a pending edit, and it survives
+  leaving the cell, saving and refreshing. Date-only cells keep their calendar day, and dates brought in
+  by Excel import are preserved the same way.
+- **The Required marker clears when a form script fills the field.** With auto-save off, a required
+  lookup, choice, text, whole-number or Yes/No cell that a script filled in kept its red Required icon.
+  It now clears as soon as the value is set, as it already did for number, currency and date cells.
+- **Clearing a date is flagged when you leave the row.** Deleting the text of a required date and moving
+  to another row showed no error until **Save**, and the row still held the old date. A cleared or
+  retyped date is now committed when you leave the cell, so a cleared required date is flagged
+  straight away.
+- **An edit made just before an auto-save starts is saved.** A change typed into a row as its auto-save
+  was starting could be left out of that save. It is now included.
+- **Refresh shows the current values after an auto-save.** Refreshing the grid after an auto-save could
+  keep showing the values displayed right after that save. **Refresh** now shows what is on the server,
+  including changes made elsewhere since the save.
+
+### Form-script (SDK) changes
+
+- **`addOnSave` receives the rows being saved.** `eventContext.data.rows` lists the rows this save
+  writes: the one row on auto-save, or every row with changes on the toolbar **Save**. `data.table` still
+  lists every row, for reading values across rows. **Change values only on `data.rows`** — a value your
+  handler changes on any other row makes **Save** write that row too. A form that still loads the
+  pre-1.5.0 `xts_Technosoft.Yana.Grid` library does not receive `rows`.
+- **Row styling setters and preset colour names**, as described under **New**.
+- **`row.save()` during the toolbar Save** joins that Save instead of starting a separate write; its
+  Promise resolves once the grid accepts the request. See `yanagrid-events.md`.
+
+### Deployment
+
+Ships in the managed **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse solution, preserving production/base identity. Import the managed solution zip (`CORECustomControl_<version>_managed.zip`) — see `yanagrid-install.md`.
+
+### Validation
+
+- Configure `{"xts_quantityorder":{"format":[{"when":"> {xts_quantityavailable}","background":"danger"}]}}`, edit a quantity above the available figure and confirm the cell turns red as you type; export to Excel and confirm the workbook shows the same colour.
+- Add a `$row` rule on a status column, set a row to that status, and confirm every cell of the row is coloured and a column rule on the same row still shows through.
+- Change two rows, leave a required field empty in one, and click **Save** — nothing is written, **Issues (1)** lists that row, and fixing it then saving writes both rows.
+- In an exported workbook, type text into a number or date column and confirm Excel refuses it.
+- With auto-save off, change a value that makes a form script fill a required lookup, and confirm its Required icon clears.
+
+### Property changes
+
+- **New: Conditional Format Rules** (`conditionalFormatRules`, Multiple Lines of Text, optional). Blank
+  means no conditional formatting; existing grids are unaffected until it is set. See
+  `yanagrid-api.md` for the full rule syntax.
+
+### Migration
+
+- None required. Existing forms and scripts keep working unchanged. Review `addOnSave` handlers that loop
+  over `data.table.getRows()` and change values: on the toolbar **Save**, change values only on
+  `data.rows`. To let conditional formatting speak on a row you colour from script, replace a per-cell
+  loop with the row setters.
+
+---
+
 ## v1.6.2 — September 2026
 
 **Upgrade from:** v1.6.1
@@ -410,6 +559,7 @@ Ships in the **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse so
 
 | From → To | Action |
 |-----------|--------|
+| any → v1.7.0 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.6.2. Adds the optional **Conditional Format Rules** property; review `addOnSave` handlers against the **Migration** note under v1.7.0 above. |
 | any → v1.6.0 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.5.1; no configuration properties change. Review the **Changes** list under v1.6.0 above if you add rows while a search is active, if a script reads a cell's display text after an edit, or if a script clears "required" per row. |
 | any → v1.5.1 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). Drop-in over v1.5.0; no configuration properties change. Review the **Upgrade guidance** table under v1.5.1 above if you use the JavaScript SDK, or if a required column relies on `0` or "No" being treated as empty. |
 | any → v1.5.0 | Import managed `CORE Custom Control` (`CORECustomControl_<version>_managed.zip`). `defaultPageSize` is removed; `enableGroupBy` is retained (hidden, not removed) — see **Property changes** and **Upgrade guidance** under v1.5.0 above. New `gridEvent` output property needs no action. |
@@ -433,4 +583,4 @@ Ships in the **CORE Custom Control** (`CORECustomControl`) umbrella Dataverse so
 
 ---
 
-> **Bundle metadata** — generated 2026-09-24 from `.public-docs/yanagrid-releases.md` for plugin version 1.6.2.
+> **Bundle metadata** — generated 2026-09-30 from `.public-docs/yanagrid-releases.md` for plugin version 1.7.0.
